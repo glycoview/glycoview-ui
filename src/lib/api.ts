@@ -3,9 +3,11 @@ import { useEffect, useState } from "react"
 import type {
   AppUser,
   ApplianceActionResponse,
+  ApplianceDynamicDNSConfig,
   ApplianceStatus,
   ApplianceTLSConfig,
   AuthStatus,
+  DynamicDNSProvider,
   TLSProvider,
   UpdateCheckResponse,
 } from "@/types"
@@ -157,6 +159,22 @@ export function fetchTLSConfig() {
 
 export function configureTLS(input: ApplianceTLSConfig) {
   return postJson<ApplianceActionResponse>("/app/api/settings/tls/configure", input)
+}
+
+export function fetchDynamicDNSProviders() {
+  return fetchJson<{ providers: DynamicDNSProvider[] }>("/app/api/settings/dyndns/providers", "")
+}
+
+export function fetchDynamicDNSConfig() {
+  return fetchJson<ApplianceDynamicDNSConfig>("/app/api/settings/dyndns/config", "")
+}
+
+export function configureDynamicDNS(input: ApplianceDynamicDNSConfig) {
+  return postJson<ApplianceActionResponse>("/app/api/settings/dyndns/configure", input)
+}
+
+export function syncDynamicDNS() {
+  return postJson<ApplianceActionResponse>("/app/api/settings/dyndns/sync", {})
 }
 
 export function useApiResource<T>(path: string, token: string) {

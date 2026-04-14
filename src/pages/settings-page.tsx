@@ -2,15 +2,19 @@ import { type ReactNode, useEffect, useMemo, useState } from "react"
 
 import {
   applyUpdate,
+  configureDynamicDNS,
   configureTLS,
+  fetchDynamicDNSConfig,
+  fetchDynamicDNSProviders,
   fetchSettingsStatus,
   fetchTLSConfig,
   fetchTLSProviders,
   fetchUpdateCheck,
   rollbackUpdate,
+  syncDynamicDNS,
 } from "@/lib/api"
 import type { ApiError } from "@/lib/api"
-import type { ApplianceStatus, ApplianceTLSConfig, TLSProvider, UpdateCheckResponse } from "@/types"
+import type { ApplianceDynamicDNSConfig, ApplianceStatus, ApplianceTLSConfig, DynamicDNSProvider, TLSProvider, UpdateCheckResponse } from "@/types"
 import { DashboardSection } from "@/components/dashboard/section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,10 +27,19 @@ type TLSForm = {
   env: Record<string, string>
 }
 
+type DynamicDNSForm = {
+  enabled: boolean
+  provider: string
+  zone: string
+  recordName: string
+  env: Record<string, string>
+}
+
 export function SettingsPage() {
   const [status, setStatus] = useState<ApplianceStatus | null>(null)
   const [update, setUpdate] = useState<UpdateCheckResponse | null>(null)
   const [providers, setProviders] = useState<TLSProvider[]>([])
+  const [dynamicDNSProviders, setDynamicDNSProviders] = useState<DynamicDNSProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
@@ -40,24 +53,38 @@ export function SettingsPage() {
     provider: "",
     env: {},
   })
+  const [dynamicDNSForm, setDynamicDNSForm] = useState<DynamicDNSForm>({
+    enabled: false,
+    provider: "",
+    zone: "",
+    recordName: "",
+    env: {},
+  })
 
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.id === tlsForm.provider) ?? null,
     [providers, tlsForm.provider],
   )
+  const selectedDynamicDNSProvider = useMemo(
+    () => dynamicDNSProviders.find((provider) => provider.id === dynamicDNSForm.provider) ?? null,
+    [dynamicDNSProviders, dynamicDNSForm.provider],
+  )
 
   const load = async () => {
     setLoading(true)
     try {
-      const [statusResponse, updateResponse, providersResponse, tlsResponse] = await Promise.all([
+      const [statusResponse, updateResponse, providersResponse, tlsResponse, dynamicDNSProvidersResponse, dynamicDNSResponse] = await Promise.all([
         fetchSettingsStatus(),
         fetchUpdateCheck(),
         fetchTLSProviders(),
         fetchTLSConfig(),
+        fetchDynamicDNSProviders(),
+        fetchDynamicDNSConfig(),
       ])
       setStatus(statusResponse)
       setUpdate(updateResponse)
       setProviders(providersResponse.providers)
+      setDynamicDNSProviders(dynamicDNSProvidersResponse.providers)
       setUpdateTag(updateResponse.latestTag || statusResponse.currentTag)
       setTLSForm({
         domain: tlsResponse.domain || "",
@@ -65,6 +92,13 @@ export function SettingsPage() {
         challengeType: tlsResponse.challengeType === "dns-01" ? "dns-01" : "http-01",
         provider: tlsResponse.provider || providersResponse.providers[0]?.id || "",
         env: tlsResponse.env || {},
+      })
+      setDynamicDNSForm({
+        enabled: dynamicDNSResponse.enabled,
+        provider: dynamicDNSResponse.provider || dynamicDNSProvidersResponse.providers[0]?.id || "",
+        zone: dynamicDNSResponse.zone || "",
+        recordName: dynamicDNSResponse.recordName || "",
+        env: dynamicDNSResponse.env || {},
       })
       setError("")
     } catch (err) {
@@ -114,6 +148,46 @@ export function SettingsPage() {
     } catch (err) {
       const apiError = err as ApiError
       setError(apiError.message || "Failed to apply update")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const submitDynamicDNS = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy("dyndns")
+    setMessage("")
+    setError("")
+    try {
+      const payload: ApplianceDynamicDNSConfig = {
+        enabled: dynamicDNSForm.enabled,
+        provider: dynamicDNSForm.enabled ? dynamicDNSForm.provider : "",
+        zone: dynamicDNSForm.enabled ? dynamicDNSForm.zone : "",
+        recordName: dynamicDNSForm.enabled ? dynamicDNSForm.recordName : "",
+        env: dynamicDNSForm.enabled ? dynamicDNSForm.env : {},
+      }
+      const result = await configureDynamicDNS(payload)
+      setMessage(result.message)
+      await load()
+    } catch (err) {
+      const apiError = err as ApiError
+      setError(apiError.message || "Failed to save dynamic DNS settings")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const triggerDynamicDNSSync = async () => {
+    setBusy("dyndns-sync")
+    setMessage("")
+    setError("")
+    try {
+      const result = await syncDynamicDNS()
+      setMessage(result.message)
+      await load()
+    } catch (err) {
+      const apiError = err as ApiError
+      setError(apiError.message || "Failed to sync dynamic DNS")
     } finally {
       setBusy("")
     }
@@ -267,6 +341,98 @@ export function SettingsPage() {
             <Button type="submit" disabled={busy !== ""}>
               {busy === "tls" ? "Saving…" : "Save TLS settings"}
             </Button>
+          </div>
+        </form>
+      </DashboardSection>
+
+      <DashboardSection title="Dynamic DNS">
+        <form onSubmit={submitDynamicDNS} className="space-y-5">
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={dynamicDNSForm.enabled}
+              onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, enabled: event.target.checked }))}
+              className="h-4 w-4 rounded border-border text-primary"
+            />
+            Keep the public IP updated every 5 minutes
+          </label>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <Field label="Provider">
+              <select
+                value={dynamicDNSForm.provider}
+                onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, provider: event.target.value }))}
+                disabled={!dynamicDNSForm.enabled}
+                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+              >
+                <option value="">Select provider</option>
+                {dynamicDNSProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Zone">
+              <Input
+                value={dynamicDNSForm.zone}
+                onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, zone: event.target.value }))}
+                placeholder="example.com"
+                disabled={!dynamicDNSForm.enabled}
+              />
+            </Field>
+            <Field label="Record name">
+              <Input
+                value={dynamicDNSForm.recordName}
+                onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, recordName: event.target.value }))}
+                placeholder="home.example.com"
+                disabled={!dynamicDNSForm.enabled}
+              />
+            </Field>
+          </div>
+
+          {dynamicDNSForm.enabled && selectedDynamicDNSProvider ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {selectedDynamicDNSProvider.fields.map((field) => (
+                <Field key={field.key} label={field.label}>
+                  <Input
+                    type={field.secret ? "password" : "text"}
+                    value={dynamicDNSForm.env[field.key] || ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) =>
+                      setDynamicDNSForm((prev) => ({
+                        ...prev,
+                        env: {
+                          ...prev.env,
+                          [field.key]: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </Field>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Current public IP" value={status?.dynamicDns.lastKnownIp || "Unknown"} />
+            <Metric label="Last checked" value={status?.dynamicDns.lastCheckedAt ? new Date(status.dynamicDns.lastCheckedAt).toLocaleString() : "Never"} />
+            <Metric label="Last synced" value={status?.dynamicDns.lastSyncedAt ? new Date(status.dynamicDns.lastSyncedAt).toLocaleString() : "Never"} />
+            <Metric label="Status" value={status?.dynamicDns.lastError || (status?.dynamicDns.enabled ? "Enabled" : "Disabled")} />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+            <div className="text-sm text-muted-foreground">
+              Cloudflare is supported in this first pass. The agent checks the public IPv4 every 5 minutes.
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={triggerDynamicDNSSync} disabled={busy !== ""}>
+                {busy === "dyndns-sync" ? "Syncing…" : "Sync now"}
+              </Button>
+              <Button type="submit" disabled={busy !== ""}>
+                {busy === "dyndns" ? "Saving…" : "Save dynamic DNS"}
+              </Button>
+            </div>
           </div>
         </form>
       </DashboardSection>

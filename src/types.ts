@@ -165,6 +165,12 @@ export type TLSProvider = {
   fields: TLSField[]
 }
 
+export type DynamicDNSProvider = {
+  id: string
+  label: string
+  fields: TLSField[]
+}
+
 export type ApplianceTLSConfig = {
   domain: string
   email: string
@@ -189,6 +195,21 @@ export type ApplianceStatus = {
   lastMessage?: string
   lastActionAt?: string
   tls: ApplianceTLSConfig
+  dynamicDns: ApplianceDynamicDNSConfig
+}
+
+export type ApplianceDynamicDNSConfig = {
+  enabled: boolean
+  provider?: string
+  zone?: string
+  recordName?: string
+  intervalMinutes?: number
+  env?: Record<string, string>
+  lastKnownIp?: string
+  lastCheckedAt?: string
+  lastSyncedAt?: string
+  lastError?: string
+  configuredAt?: string
 }
 
 export type UpdateCheckResponse = {
