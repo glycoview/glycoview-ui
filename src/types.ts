@@ -211,6 +211,7 @@ export type ApplianceStatus = {
   lastActionAt?: string
   tls: ApplianceTLSConfig
   dynamicDns: ApplianceDynamicDNSConfig
+  currentPublicIp?: string
 }
 
 export type ApplianceDynamicDNSConfig = {

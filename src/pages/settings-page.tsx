@@ -488,7 +488,7 @@ export function SettingsPage() {
           ) : null}
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Current public IP" value={status?.dynamicDns.lastKnownIp || "Unknown"} />
+            <Metric label="Current public IP" value={status?.currentPublicIp || status?.dynamicDns.lastKnownIp || "Unknown"} />
             <Metric label="Last checked" value={status?.dynamicDns.lastCheckedAt ? new Date(status.dynamicDns.lastCheckedAt).toLocaleString() : "Never"} />
             <Metric label="Last synced" value={status?.dynamicDns.lastSyncedAt ? new Date(status.dynamicDns.lastSyncedAt).toLocaleString() : "Never"} />
             <Metric label="Status" value={status?.dynamicDns.lastError || (status?.dynamicDns.enabled ? "Enabled" : "Disabled")} />
