@@ -157,18 +157,33 @@ export type TLSField = {
   label: string
   placeholder?: string
   secret?: boolean
+  help?: string
 }
 
 export type TLSProvider = {
   id: string
   label: string
+  description?: string
+  instructions?: string[]
+  docsUrl?: string
   fields: TLSField[]
 }
 
 export type DynamicDNSProvider = {
   id: string
   label: string
+  description?: string
+  instructions?: string[]
+  docsUrl?: string
   fields: TLSField[]
+}
+
+export type ChallengeOption = {
+  id: "http-01" | "dns-01" | string
+  label: string
+  description?: string
+  instructions?: string[]
+  recommended?: boolean
 }
 
 export type ApplianceTLSConfig = {

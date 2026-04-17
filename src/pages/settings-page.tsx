@@ -14,7 +14,7 @@ import {
   syncDynamicDNS,
 } from "@/lib/api"
 import type { ApiError } from "@/lib/api"
-import type { ApplianceDynamicDNSConfig, ApplianceStatus, ApplianceTLSConfig, DynamicDNSProvider, TLSProvider, UpdateCheckResponse } from "@/types"
+import type { ApplianceDynamicDNSConfig, ApplianceStatus, ApplianceTLSConfig, ChallengeOption, DynamicDNSProvider, TLSProvider, UpdateCheckResponse } from "@/types"
 import { DashboardSection } from "@/components/dashboard/section"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +39,7 @@ export function SettingsPage() {
   const [status, setStatus] = useState<ApplianceStatus | null>(null)
   const [update, setUpdate] = useState<UpdateCheckResponse | null>(null)
   const [providers, setProviders] = useState<TLSProvider[]>([])
+  const [challenges, setChallenges] = useState<ChallengeOption[]>([])
   const [dynamicDNSProviders, setDynamicDNSProviders] = useState<DynamicDNSProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState("")
@@ -84,6 +85,7 @@ export function SettingsPage() {
       setStatus(statusResponse)
       setUpdate(updateResponse)
       setProviders(providersResponse.providers)
+      setChallenges(providersResponse.challenges ?? [])
       setDynamicDNSProviders(dynamicDNSProvidersResponse.providers)
       setUpdateTag(updateResponse.latestTag || statusResponse.currentTag)
       setTLSForm({
@@ -270,67 +272,119 @@ export function SettingsPage() {
       </DashboardSection>
 
       <DashboardSection title="TLS and domain">
-        <form onSubmit={submitTLS} className="space-y-5">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="Domain">
-              <Input value={tlsForm.domain} onChange={(event) => setTLSForm((prev) => ({ ...prev, domain: event.target.value }))} placeholder="glycoview.example.com" />
+        <form onSubmit={submitTLS} className="space-y-6">
+          <p className="text-sm text-muted-foreground">
+            Trio requires a trusted HTTPS certificate to connect. Pick a challenge method below — DNS-01 is recommended for home users because it works behind any router without port forwarding.
+          </p>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Public domain">
+              <Input value={tlsForm.domain} onChange={(event) => setTLSForm((prev) => ({ ...prev, domain: event.target.value }))} placeholder="my-glycoview.duckdns.org" />
+              <p className="text-xs text-muted-foreground">The full hostname Trio will connect to. For DuckDNS use your <code>*.duckdns.org</code> name.</p>
             </Field>
             <Field label="Let's Encrypt email">
-              <Input value={tlsForm.email} onChange={(event) => setTLSForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="admin@example.com" />
-            </Field>
-            <Field label="Challenge">
-              <select
-                value={tlsForm.challengeType}
-                onChange={(event) =>
-                  setTLSForm((prev) => ({
-                    ...prev,
-                    challengeType: event.target.value === "dns-01" ? "dns-01" : "http-01",
-                    provider: event.target.value === "dns-01" ? prev.provider || providers[0]?.id || "" : "",
-                  }))
-                }
-                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="http-01">HTTP challenge</option>
-                <option value="dns-01">DNS challenge</option>
-              </select>
-            </Field>
-            <Field label="DNS provider">
-              <select
-                value={tlsForm.provider}
-                onChange={(event) => setTLSForm((prev) => ({ ...prev, provider: event.target.value }))}
-                disabled={tlsForm.challengeType !== "dns-01"}
-                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
-              >
-                <option value="">Select provider</option>
-                {providers.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.label}
-                  </option>
-                ))}
-              </select>
+              <Input value={tlsForm.email} onChange={(event) => setTLSForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="you@example.com" />
+              <p className="text-xs text-muted-foreground">Used by Let's Encrypt for expiry notifications only. Never shared.</p>
             </Field>
           </div>
 
-          {tlsForm.challengeType === "dns-01" && selectedProvider ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {selectedProvider.fields.map((field) => (
-                <Field key={field.key} label={field.label}>
-                  <Input
-                    type={field.secret ? "password" : "text"}
-                    value={tlsForm.env[field.key] || ""}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
+          {challenges.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {challenges.map((challenge) => {
+                const active = tlsForm.challengeType === challenge.id
+                return (
+                  <button
+                    type="button"
+                    key={challenge.id}
+                    onClick={() =>
                       setTLSForm((prev) => ({
                         ...prev,
-                        env: {
-                          ...prev.env,
-                          [field.key]: event.target.value,
-                        },
+                        challengeType: challenge.id === "dns-01" ? "dns-01" : "http-01",
+                        provider: challenge.id === "dns-01" ? prev.provider || providers[0]?.id || "" : "",
                       }))
                     }
-                  />
-                </Field>
-              ))}
+                    className={`text-left rounded-lg border px-4 py-3 transition ${active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/50"}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-foreground">{challenge.label}</div>
+                      {challenge.recommended ? (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Recommended</span>
+                      ) : null}
+                    </div>
+                    {challenge.description ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{challenge.description}</p>
+                    ) : null}
+                    {challenge.instructions && challenge.instructions.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground list-disc pl-4">
+                        {challenge.instructions.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {tlsForm.challengeType === "dns-01" ? (
+            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+              <Field label="DNS provider">
+                <select
+                  value={tlsForm.provider}
+                  onChange={(event) => setTLSForm((prev) => ({ ...prev, provider: event.target.value, env: {} }))}
+                  className="flex h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <option value="">Select provider…</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              {selectedProvider ? (
+                <div className="space-y-3 rounded-md bg-background/60 p-4">
+                  {selectedProvider.description ? (
+                    <p className="text-sm text-foreground">{selectedProvider.description}</p>
+                  ) : null}
+                  {selectedProvider.instructions && selectedProvider.instructions.length > 0 ? (
+                    <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                      {selectedProvider.instructions.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ol>
+                  ) : null}
+                  {selectedProvider.docsUrl ? (
+                    <a href={selectedProvider.docsUrl} target="_blank" rel="noreferrer" className="inline-block text-sm font-medium text-primary hover:underline">
+                      Open provider dashboard →
+                    </a>
+                  ) : null}
+
+                  <div className="grid gap-3 pt-2 md:grid-cols-2">
+                    {selectedProvider.fields.map((field) => (
+                      <Field key={field.key} label={field.label}>
+                        <Input
+                          type={field.secret ? "password" : "text"}
+                          value={tlsForm.env[field.key] || ""}
+                          placeholder={field.placeholder}
+                          onChange={(event) =>
+                            setTLSForm((prev) => ({
+                              ...prev,
+                              env: {
+                                ...prev.env,
+                                [field.key]: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                        {field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null}
+                      </Field>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -392,25 +446,44 @@ export function SettingsPage() {
           </div>
 
           {dynamicDNSForm.enabled && selectedDynamicDNSProvider ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {selectedDynamicDNSProvider.fields.map((field) => (
-                <Field key={field.key} label={field.label}>
-                  <Input
-                    type={field.secret ? "password" : "text"}
-                    value={dynamicDNSForm.env[field.key] || ""}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
-                      setDynamicDNSForm((prev) => ({
-                        ...prev,
-                        env: {
-                          ...prev.env,
-                          [field.key]: event.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </Field>
-              ))}
+            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4">
+              {selectedDynamicDNSProvider.description ? (
+                <p className="text-sm text-foreground">{selectedDynamicDNSProvider.description}</p>
+              ) : null}
+              {selectedDynamicDNSProvider.instructions && selectedDynamicDNSProvider.instructions.length > 0 ? (
+                <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                  {selectedDynamicDNSProvider.instructions.map((step, i) => (
+                    <li key={i}>{step}</li>
+                  ))}
+                </ol>
+              ) : null}
+              {selectedDynamicDNSProvider.docsUrl ? (
+                <a href={selectedDynamicDNSProvider.docsUrl} target="_blank" rel="noreferrer" className="inline-block text-sm font-medium text-primary hover:underline">
+                  Open provider dashboard →
+                </a>
+              ) : null}
+
+              <div className="grid gap-3 pt-2 md:grid-cols-2 xl:grid-cols-3">
+                {selectedDynamicDNSProvider.fields.map((field) => (
+                  <Field key={field.key} label={field.label}>
+                    <Input
+                      type={field.secret ? "password" : "text"}
+                      value={dynamicDNSForm.env[field.key] || ""}
+                      placeholder={field.placeholder}
+                      onChange={(event) =>
+                        setDynamicDNSForm((prev) => ({
+                          ...prev,
+                          env: {
+                            ...prev.env,
+                            [field.key]: event.target.value,
+                          },
+                        }))
+                      }
+                    />
+                    {field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null}
+                  </Field>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -423,7 +496,7 @@ export function SettingsPage() {
 
           <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
             <div className="text-sm text-muted-foreground">
-              Cloudflare is supported in this first pass. The agent checks the public IPv4 every 5 minutes.
+              DuckDNS and Cloudflare are supported. The agent checks the public IPv4 every 5 minutes and updates the record when it changes.
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={triggerDynamicDNSSync} disabled={busy !== ""}>

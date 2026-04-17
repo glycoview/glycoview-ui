@@ -7,6 +7,7 @@ import type {
   ApplianceStatus,
   ApplianceTLSConfig,
   AuthStatus,
+  ChallengeOption,
   DynamicDNSProvider,
   TLSProvider,
   UpdateCheckResponse,
@@ -150,7 +151,7 @@ export function rollbackUpdate() {
 }
 
 export function fetchTLSProviders() {
-  return fetchJson<{ providers: TLSProvider[] }>("/app/api/settings/tls/providers", "")
+  return fetchJson<{ providers: TLSProvider[]; challenges?: ChallengeOption[] }>("/app/api/settings/tls/providers", "")
 }
 
 export function fetchTLSConfig() {
