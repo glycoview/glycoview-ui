@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react"
 import {
   Area,
-  Bar,
   CartesianGrid,
   ComposedChart,
+  Line,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -15,7 +15,7 @@ import {
 
 import type { EventPoint, GlucosePoint } from "@/types"
 
-/* ───────────── types ───────────── */
+/* ───────────── props ───────────── */
 type DailyTraceProps = {
   rangeStart: number
   glucose: GlucosePoint[]
@@ -27,33 +27,22 @@ type DailyTraceProps = {
   smbgs?: EventPoint[]
   height?: number
   showBands?: boolean
+  showRangeTabs?: boolean
+  defaultWindow?: Window
 }
 
 type Window = "4h" | "6h" | "12h" | "24h"
 
-type GluRow = { t: number; v: number; state: State }
-type BolusRow = { t: number; u: number; label: string }
-type CarbRow = { t: number; g: number; label: string }
-type BasalRow = { t: number; rate: number }
-type IobRow = { t: number; iob: number }
-
 /* ───────────── constants ───────────── */
-const DAY_MIN = 0
 const DAY_MAX = 24 * 60
-const DIA_MIN = 240 // insulin duration of action in minutes
-const TICK_MINUTES: Record<Window, number[]> = {
-  "4h": generateTicks(60),
-  "6h": generateTicks(60),
-  "12h": generateTicks(120),
-  "24h": generateTicks(180),
-}
+const DIA_MIN = 240 // insulin duration of action (minutes)
 
-function generateTicks(stepMin: number): number[] {
-  const out: number[] = []
-  for (let m = 0; m <= DAY_MAX; m += stepMin) out.push(m)
-  return out
-}
+/* marker reservation band at top of glucose plane */
+const CARB_Y = 340
+const BOLUS_Y = 315
+const SMB_Y = 290
 
+/* ───────────── helpers ───────────── */
 type State = "vlow" | "low" | "in" | "high" | "vhigh"
 
 const STATE_COLOR: Record<State, string> = {
@@ -83,18 +72,52 @@ function formatHHMM(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
 }
 
-/* ───── simple IOB model (linear decay over DIA) ───── */
-function iobSeries(
-  events: { t: number; u: number }[],
-  stepMin = 5,
-): IobRow[] {
-  const rows: IobRow[] = []
+function generateTicks(stepMin: number): number[] {
+  const out: number[] = []
+  for (let m = 0; m <= DAY_MAX; m += stepMin) out.push(m)
+  return out
+}
+
+function pickTicks(_win: Window, domain: [number, number]): number[] {
+  const span = domain[1] - domain[0]
+  const step = span <= 360 ? 30 : span <= 720 ? 60 : 180
+  const ticks = generateTicks(step)
+  return ticks.filter((t) => t >= domain[0] && t <= domain[1])
+}
+
+function roundTo(v: number, decimals: number): number {
+  const pow = 10 ** decimals
+  return Math.round(v * pow) / pow
+}
+
+function nearest<T extends { t: number }>(rows: T[], target: number): T | null {
+  if (!rows.length) return null
+  let best = rows[0]
+  let bestDist = Math.abs(best.t - target)
+  for (let i = 1; i < rows.length; i++) {
+    const d = Math.abs(rows[i].t - target)
+    if (d < bestDist) {
+      best = rows[i]
+      bestDist = d
+    }
+  }
+  return best
+}
+
+function smbLabel(u: number): string {
+  // Show Trio-style comma-decimal (e.g. ".05", ".25")
+  if (u >= 1) return u.toFixed(1)
+  return u.toFixed(2).replace(/^0\./, ".")
+}
+
+/* ───────────── IOB model ───────────── */
+function iobSeries(events: { t: number; u: number }[], stepMin = 5) {
+  const rows: { t: number; iob: number }[] = []
   for (let t = 0; t <= DAY_MAX; t += stepMin) {
     let sum = 0
     for (const e of events) {
       const dt = t - e.t
       if (dt <= 0 || dt >= DIA_MIN) continue
-      // piecewise: instant onset → linear decay to zero at DIA
       const onset = dt < 15 ? dt / 15 : 1
       const decay = Math.max(0, 1 - (dt - 15) / (DIA_MIN - 15))
       sum += e.u * onset * decay
@@ -102,32 +125,6 @@ function iobSeries(
     rows.push({ t, iob: Math.round(sum * 100) / 100 })
   }
   return rows
-}
-
-/* ───── basal step sequence (scheduled + temp) ───── */
-function expandBasal(rangeStart: number, profile: EventPoint[], temps: EventPoint[]): BasalRow[] {
-  const sched = [...profile]
-    .map((p) => ({ t: minuteOfDay(p.at, rangeStart), rate: p.value }))
-    .sort((a, b) => a.t - b.t)
-
-  if (sched.length === 0) sched.push({ t: 0, rate: 0 })
-  if (sched[0].t > 0) sched.unshift({ t: 0, rate: sched[0].rate })
-
-  // Apply temps on top. Each temp has start minute, duration, rate.
-  const points: BasalRow[] = []
-  for (let t = 0; t <= DAY_MAX; t += 5) {
-    let rate = 0
-    for (let i = 0; i < sched.length; i++) {
-      if (sched[i].t <= t) rate = sched[i].rate
-    }
-    for (const temp of temps) {
-      const tStart = minuteOfDay(temp.at, rangeStart)
-      const tEnd = tStart + (temp.duration || 30)
-      if (t >= tStart && t < tEnd) rate = temp.value
-    }
-    points.push({ t, rate: Math.round(rate * 1000) / 1000 })
-  }
-  return points
 }
 
 /* ───────────── component ───────────── */
@@ -138,61 +135,48 @@ export function DailyTrace({
   boluses = [],
   smbs = [],
   tempBasals = [],
-  basalProfile = [],
+  basalProfile: _basalProfile = [],
   smbgs = [],
-  height = 520,
+  height = 480,
   showBands = true,
+  showRangeTabs = true,
+  defaultWindow = "24h",
 }: DailyTraceProps) {
-  const [win, setWin] = useState<Window>("24h")
-  const [domain, setDomain] = useState<[number, number]>([DAY_MIN, DAY_MAX])
+  const [win, setWin] = useState<Window>(defaultWindow)
 
   const data = useMemo(() => {
-    const glu: GluRow[] = glucose
+    const glu = glucose
       .map((g) => ({ t: minuteOfDay(g.at, rangeStart), v: Math.round(g.value), state: classify(g.value) }))
       .sort((a, b) => a.t - b.t)
 
-    const bol: BolusRow[] = boluses.map((b) => ({
+    const bol = boluses.map((b) => ({
       t: minuteOfDay(b.at, rangeStart),
       u: roundTo(b.value, 2),
-      label: b.subtitle || b.label,
     }))
-    const smb: BolusRow[] = smbs.map((b) => ({
+    const smb = smbs.map((b) => ({
       t: minuteOfDay(b.at, rangeStart),
       u: roundTo(b.value, 2),
-      label: b.subtitle || b.label,
     }))
-    const carb: CarbRow[] = carbs.map((c) => ({
+    const carb = carbs.map((c) => ({
       t: minuteOfDay(c.at, rangeStart),
       g: Math.round(c.value),
-      label: c.subtitle || c.label,
     }))
     const smbgRows = smbgs.map((s) => ({ t: minuteOfDay(s.at, rangeStart), v: Math.round(s.value) }))
-
-    const basal = expandBasal(rangeStart, basalProfile, tempBasals)
     const iob = iobSeries([...bol, ...smb])
 
-    return { glu, bol, smb, carb, smbgRows, basal, iob }
-  }, [rangeStart, glucose, carbs, boluses, smbs, tempBasals, basalProfile, smbgs])
+    return { glu, bol, smb, carb, smbgRows, iob }
+  }, [rangeStart, glucose, carbs, boluses, smbs, smbgs])
 
-  const setWindow = (w: Window) => {
-    setWin(w)
-    const endOfGlucose = data.glu.length ? data.glu[data.glu.length - 1].t : DAY_MAX
+  const domain = useMemo<[number, number]>(() => {
     const lengths: Record<Window, number> = { "4h": 240, "6h": 360, "12h": 720, "24h": DAY_MAX }
-    const len = lengths[w]
-    if (len >= DAY_MAX) {
-      setDomain([0, DAY_MAX])
-    } else {
-      const end = Math.min(DAY_MAX, endOfGlucose + 10)
-      const start = Math.max(0, end - len)
-      setDomain([start, end])
-    }
-  }
+    const len = lengths[win]
+    if (len >= DAY_MAX) return [0, DAY_MAX]
+    const endOfGlu = data.glu.length ? data.glu[data.glu.length - 1].t : DAY_MAX
+    const end = Math.min(DAY_MAX, endOfGlu + 10)
+    return [Math.max(0, end - len), end]
+  }, [data.glu, win])
 
-  const ticks = TICK_MINUTES[win]
-
-  const basalHeight = 38
-  const iobHeight = 80
-  const chartHeight = Math.max(260, height - basalHeight - iobHeight - 16)
+  const ticks = pickTicks(win, domain)
 
   if (!data.glu.length) {
     return (
@@ -202,63 +186,70 @@ export function DailyTrace({
     )
   }
 
-  // Stretch glucose dot data with a y2 (always equals v) so we can scatter-plot.
-  const scatterGlu = data.glu.map((d) => ({ x: d.t, y: d.v, state: d.state }))
-  const scatterBol = data.bol.map((d) => ({ x: d.t, y: 310, u: d.u }))
-  const scatterSmb = data.smb.map((d) => ({ x: d.t, y: 285, u: d.u }))
-  const scatterCarb = data.carb.map((d) => ({ x: d.t, y: 330, g: d.g }))
-  const scatterSmbg = data.smbgRows.map((d) => ({ x: d.t, y: d.v }))
+  const iobHeight = Math.min(90, Math.max(70, Math.round(height * 0.18)))
+  const chartHeight = height - iobHeight - (showRangeTabs ? 28 : 0)
+
+  /* Merge glucose + markers into a single main-chart data array so the Tooltip
+     can reliably see them at the hovered x-coordinate. */
+  type MergedRow = {
+    t: number
+    glucose?: number
+    state?: State
+    bolus?: number
+    smb?: number
+    carb?: number
+    smbg?: number
+  }
+  const merged: MergedRow[] = []
+  const byT = new Map<number, MergedRow>()
+  const upsert = (t: number): MergedRow => {
+    let row = byT.get(t)
+    if (!row) {
+      row = { t }
+      byT.set(t, row)
+      merged.push(row)
+    }
+    return row
+  }
+  data.glu.forEach((g) => {
+    const row = upsert(g.t)
+    row.glucose = g.v
+    row.state = g.state
+  })
+  data.bol.forEach((b) => {
+    upsert(b.t).bolus = b.u
+  })
+  data.smb.forEach((b) => {
+    upsert(b.t).smb = b.u
+  })
+  data.carb.forEach((c) => {
+    upsert(c.t).carb = c.g
+  })
+  data.smbgRows.forEach((s) => {
+    upsert(s.t).smbg = s.v
+  })
+  merged.sort((a, b) => a.t - b.t)
 
   return (
     <div style={{ width: "100%" }}>
-      {/* Top strip: basal schedule as a thin step area */}
-      <ResponsiveContainer width="100%" height={basalHeight}>
-        <ComposedChart data={data.basal} margin={{ top: 4, right: 12, bottom: 0, left: 42 }}>
-          <XAxis dataKey="t" type="number" domain={domain} hide />
-          <YAxis type="number" domain={[0, "dataMax + 0.2"]} hide />
-          <Area
-            type="stepAfter"
-            dataKey="rate"
-            stroke="var(--basal)"
-            strokeWidth={1.2}
-            fill="var(--basal)"
-            fillOpacity={0.35}
-            isAnimationActive={false}
-          />
-          {tempBasals.map((t, i) => (
-            <ReferenceArea
-              key={i}
-              x1={minuteOfDay(t.at, rangeStart)}
-              x2={Math.min(DAY_MAX, minuteOfDay(t.at, rangeStart) + (t.duration || 30))}
-              fill={t.value === 0 ? "var(--st-low)" : "var(--bolus)"}
-              fillOpacity={0.22}
-              stroke="none"
-            />
-          ))}
-        </ComposedChart>
-      </ResponsiveContainer>
-
-      {/* Main: glucose dots + bolus / smb / carb markers + fingersticks */}
+      {/* Main glucose panel */}
       <ResponsiveContainer width="100%" height={chartHeight}>
-        <ComposedChart margin={{ top: 8, right: 12, bottom: 0, left: 2 }}>
+        <ComposedChart data={merged} margin={{ top: 10, right: 12, bottom: 0, left: 2 }}>
           <CartesianGrid stroke="var(--line-2)" strokeDasharray="2 4" vertical={false} />
           <XAxis
+            dataKey="t"
             type="number"
-            dataKey="x"
             domain={domain}
             ticks={ticks}
             tickFormatter={(v) => formatHHMM(Number(v))}
             tick={{ fontSize: 11, fontFamily: "Geist Mono", fill: "var(--ink-4)" }}
             stroke="var(--line)"
+            axisLine={{ stroke: "var(--line)" }}
             tickLine={false}
             allowDataOverflow
-            axisLine={{ stroke: "var(--line)" }}
-            height={0}
-            hide
           />
           <YAxis
             type="number"
-            dataKey="y"
             domain={[40, 350]}
             ticks={[70, 100, 180, 250]}
             tick={{ fontSize: 11, fontFamily: "Geist Mono", fill: "var(--ink-3)" }}
@@ -266,6 +257,7 @@ export function DailyTrace({
             axisLine={false}
             tickLine={false}
             width={42}
+            allowDataOverflow
           />
 
           {showBands && (
@@ -274,60 +266,78 @@ export function DailyTrace({
               <ReferenceArea y1={54} y2={70} fill="var(--st-low)" fillOpacity={0.08} stroke="none" />
               <ReferenceArea y1={70} y2={180} fill="var(--st-in)" fillOpacity={0.05} stroke="none" />
               <ReferenceArea y1={180} y2={250} fill="var(--st-high)" fillOpacity={0.06} stroke="none" />
-              <ReferenceArea y1={250} y2={350} fill="var(--st-vhigh)" fillOpacity={0.08} stroke="none" />
-              <ReferenceLine
-                y={70}
-                stroke="var(--st-low)"
-                strokeDasharray="4 4"
-                strokeOpacity={0.7}
-                strokeWidth={1}
-              />
-              <ReferenceLine y={100} stroke="var(--st-in)" strokeOpacity={0.55} strokeWidth={1} />
-              <ReferenceLine
-                y={180}
-                stroke="var(--st-high)"
-                strokeDasharray="4 4"
-                strokeOpacity={0.7}
-                strokeWidth={1}
-              />
+              <ReferenceArea y1={250} y2={275} fill="var(--st-vhigh)" fillOpacity={0.08} stroke="none" />
+              <ReferenceLine y={70} stroke="var(--st-low)" strokeDasharray="4 4" strokeOpacity={0.7} />
+              <ReferenceLine y={100} stroke="var(--st-in)" strokeOpacity={0.55} />
+              <ReferenceLine y={180} stroke="var(--st-high)" strokeDasharray="4 4" strokeOpacity={0.7} />
             </>
           )}
 
-          {/* Fingersticks: ringed dots on top of everything */}
+          {/* Temp basal overlays — faint bands only, no extra strip */}
+          {tempBasals.map((t, i) => {
+            const x1 = minuteOfDay(t.at, rangeStart)
+            const x2 = Math.min(DAY_MAX, x1 + (t.duration || 30))
+            const isSuspend = t.value === 0
+            return (
+              <ReferenceArea
+                key={`tb-${i}`}
+                x1={x1}
+                x2={x2}
+                y1={40}
+                y2={60}
+                fill={isSuspend ? "var(--st-low)" : "var(--bolus)"}
+                fillOpacity={0.25}
+                stroke="none"
+              />
+            )
+          })}
+
+          {/* Hidden Line to anchor Tooltip cursor to glucose data — never rendered visibly */}
+          <Line
+            type="monotone"
+            dataKey="glucose"
+            stroke="transparent"
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+            connectNulls
+          />
+
+          {/* Fingerstick rings — at their real y, drawn first so dots can cover */}
           <Scatter
-            data={scatterSmbg}
-            dataKey="y"
+            dataKey="smbg"
+            data={merged}
             shape={(props: any) => <SMBGMarker {...props} />}
             isAnimationActive={false}
           />
 
-          {/* Glucose readings as dots colored by range */}
+          {/* Glucose dots */}
           <Scatter
-            data={scatterGlu}
-            dataKey="y"
+            dataKey="glucose"
+            data={merged}
             shape={(props: any) => <GluDot {...props} />}
             isAnimationActive={false}
           />
 
-          {/* Carb markers at the very top */}
+          {/* Carb circles at the very top */}
           <Scatter
-            data={scatterCarb}
+            data={data.carb.map((d) => ({ t: d.t, y: CARB_Y, g: d.g }))}
             dataKey="y"
             shape={(props: any) => <CarbMarker {...props} />}
             isAnimationActive={false}
           />
 
-          {/* Bolus: big labeled triangles */}
+          {/* Bolus triangles — big, labeled */}
           <Scatter
-            data={scatterBol}
+            data={data.bol.map((d) => ({ t: d.t, y: BOLUS_Y, u: d.u }))}
             dataKey="y"
             shape={(props: any) => <BolusMarker {...props} />}
             isAnimationActive={false}
           />
 
-          {/* SMB: tiny labeled triangles */}
+          {/* SMB triangles — small, labeled */}
           <Scatter
-            data={scatterSmb}
+            data={data.smb.map((d) => ({ t: d.t, y: SMB_Y, u: d.u }))}
             dataKey="y"
             shape={(props: any) => <SMBMarker {...props} />}
             isAnimationActive={false}
@@ -341,13 +351,13 @@ export function DailyTrace({
         </ComposedChart>
       </ResponsiveContainer>
 
-      {/* Bottom: IOB area strip */}
+      {/* IOB strip */}
       <ResponsiveContainer width="100%" height={iobHeight}>
-        <ComposedChart data={data.iob} margin={{ top: 0, right: 12, bottom: 20, left: 2 }}>
+        <ComposedChart data={data.iob} margin={{ top: 2, right: 12, bottom: 22, left: 2 }}>
           <defs>
             <linearGradient id="iobGrad" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0" stopColor="var(--bolus)" stopOpacity={0.55} />
-              <stop offset="1" stopColor="var(--bolus)" stopOpacity={0.1} />
+              <stop offset="1" stopColor="var(--bolus)" stopOpacity={0.08} />
             </linearGradient>
           </defs>
           <CartesianGrid stroke="var(--line-2)" strokeDasharray="2 4" vertical={false} />
@@ -361,10 +371,11 @@ export function DailyTrace({
             stroke="var(--line)"
             axisLine={{ stroke: "var(--line)" }}
             tickLine={false}
+            allowDataOverflow
           />
           <YAxis
             type="number"
-            domain={[0, "dataMax + 0.5"]}
+            domain={[0, "dataMax + 0.4"]}
             tick={{ fontSize: 10, fontFamily: "Geist Mono", fill: "var(--ink-4)" }}
             stroke="var(--line)"
             axisLine={false}
@@ -395,20 +406,21 @@ export function DailyTrace({
         </ComposedChart>
       </ResponsiveContainer>
 
-      {/* Range tabs */}
-      <div className="row" style={{ marginTop: 8, gap: 6, justifyContent: "flex-end" }}>
-        {(["4h", "6h", "12h", "24h"] as const).map((w) => (
-          <button
-            key={w}
-            type="button"
-            className={"tab" + (win === w ? " is-active" : "")}
-            onClick={() => setWindow(w)}
-            style={{ padding: "4px 10px", fontSize: 12 }}
-          >
-            {w}
-          </button>
-        ))}
-      </div>
+      {showRangeTabs && (
+        <div className="row" style={{ marginTop: 6, gap: 6, justifyContent: "flex-end" }}>
+          {(["4h", "6h", "12h", "24h"] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              className={"tab" + (win === w ? " is-active" : "")}
+              onClick={() => setWin(w)}
+              style={{ padding: "4px 10px", fontSize: 12 }}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -416,12 +428,13 @@ export function DailyTrace({
 /* ───────────── markers ───────────── */
 function GluDot({ cx, cy, payload }: any) {
   if (cx == null || cy == null) return null
-  const state = payload?.state as State
-  return <circle cx={cx} cy={cy} r={3} fill={STATE_COLOR[state] || "var(--ink)"} stroke="none" />
+  const state = payload?.state as State | undefined
+  if (!state) return null
+  return <circle cx={cx} cy={cy} r={3.2} fill={STATE_COLOR[state]} stroke="none" />
 }
 
-function SMBGMarker({ cx, cy }: any) {
-  if (cx == null || cy == null) return null
+function SMBGMarker({ cx, cy, payload }: any) {
+  if (cx == null || cy == null || payload?.smbg == null) return null
   return (
     <g>
       <circle cx={cx} cy={cy} r={5} fill="var(--bg)" stroke="var(--ink)" strokeWidth={1.5} />
@@ -433,11 +446,18 @@ function SMBGMarker({ cx, cy }: any) {
 function CarbMarker({ cx, cy, payload }: any) {
   if (cx == null || cy == null) return null
   const g = Number(payload?.g || 0)
-  const r = Math.min(10, 5 + g / 8)
+  const r = Math.min(11, 5 + g / 8)
   return (
     <g transform={`translate(${cx},${cy})`}>
       <circle r={r} fill="var(--carbs)" opacity={0.95} />
-      <text textAnchor="middle" y={3} fontSize={9} fontFamily="Geist Mono" fill="var(--surface)" fontWeight={600}>
+      <text
+        textAnchor="middle"
+        y={3}
+        fontSize={9}
+        fontFamily="Geist Mono"
+        fill="var(--surface)"
+        fontWeight={600}
+      >
         {g}
       </text>
     </g>
@@ -447,13 +467,19 @@ function CarbMarker({ cx, cy, payload }: any) {
 function BolusMarker({ cx, cy, payload }: any) {
   if (cx == null || cy == null) return null
   const u = Number(payload?.u || 0)
-  const s = Math.max(5, Math.min(10, 4 + u * 0.4))
+  const s = Math.max(5, Math.min(10, 4 + u * 0.45))
   return (
     <g transform={`translate(${cx},${cy})`}>
-      <text textAnchor="middle" y={-s - 3} fontSize={10} fontFamily="Geist Mono" fill="var(--ink)" fontWeight={600}>
-        {u.toFixed(u >= 1 ? 1 : 2)}
+      <text
+        textAnchor="middle"
+        y={-s - 4}
+        fontSize={10}
+        fontFamily="Geist Mono"
+        fill="var(--ink)"
+        fontWeight={600}
+      >
+        {u >= 1 ? u.toFixed(1) : u.toFixed(2)}
       </text>
-      {/* Downward triangle, outlined + filled for pop */}
       <polygon
         points={`0,${s} ${s * 0.9},${-s * 0.7} ${-s * 0.9},${-s * 0.7}`}
         fill="var(--bolus)"
@@ -467,12 +493,18 @@ function BolusMarker({ cx, cy, payload }: any) {
 function SMBMarker({ cx, cy, payload }: any) {
   if (cx == null || cy == null) return null
   const u = Number(payload?.u || 0)
-  const s = Math.max(2.8, Math.min(5, 2 + u * 4))
-  const label = formatSmb(u)
+  const s = Math.max(2.6, Math.min(4.6, 2 + u * 4))
   return (
     <g transform={`translate(${cx},${cy})`}>
-      <text textAnchor="middle" y={-s - 1} fontSize={8} fontFamily="Geist Mono" fill="var(--smb)" opacity={0.85}>
-        {label}
+      <text
+        textAnchor="middle"
+        y={-s - 2}
+        fontSize={8}
+        fontFamily="Geist Mono"
+        fill="var(--smb)"
+        opacity={0.9}
+      >
+        {smbLabel(u)}
       </text>
       <polygon
         points={`0,${s} ${s * 0.85},${-s * 0.6} ${-s * 0.85},${-s * 0.6}`}
@@ -483,42 +515,45 @@ function SMBMarker({ cx, cy, payload }: any) {
   )
 }
 
-function formatSmb(u: number): string {
-  if (u >= 0.1) return u.toFixed(2).replace(/^0\./, ".")
-  return u.toFixed(2).replace(/^0\./, ".")
-}
-
-/* ───── tooltip ───── */
+/* ───────────── tooltip ───────────── */
 type HoverData = {
-  glu: GluRow[]
-  bol: BolusRow[]
-  smb: BolusRow[]
-  carb: CarbRow[]
+  glu: { t: number; v: number; state: State }[]
+  bol: { t: number; u: number }[]
+  smb: { t: number; u: number }[]
+  carb: { t: number; g: number }[]
   smbgRows: { t: number; v: number }[]
-  basal: BasalRow[]
-  iob: IobRow[]
+  iob: { t: number; iob: number }[]
 }
 
-function HoverTooltip({ active, label, data }: { active?: boolean; label?: number | string; data: HoverData }) {
-  if (!active) return null
+function HoverTooltip({
+  active,
+  label,
+  data,
+}: {
+  active?: boolean
+  label?: number | string
+  data: HoverData
+}) {
+  if (!active || label == null) return null
   const minute = Number(label)
+  if (!Number.isFinite(minute)) return null
+
   const glu = nearest(data.glu, minute)
-  const basal = nearest(data.basal, minute)
   const iob = nearest(data.iob, minute)
 
-  const nearby: string[] = []
-  const window = 8
+  const window = 10
+  const near: string[] = []
   data.bol.forEach((b) => {
-    if (Math.abs(b.t - minute) <= window) nearby.push(`Bolus ${b.u.toFixed(1)}U`)
+    if (Math.abs(b.t - minute) <= window) near.push(`Bolus ${b.u.toFixed(b.u >= 1 ? 1 : 2)}U`)
   })
   data.smb.forEach((b) => {
-    if (Math.abs(b.t - minute) <= window) nearby.push(`SMB ${b.u.toFixed(2)}U`)
+    if (Math.abs(b.t - minute) <= window) near.push(`SMB ${smbLabel(b.u)}U`)
   })
   data.carb.forEach((c) => {
-    if (Math.abs(c.t - minute) <= window) nearby.push(`Carbs ${c.g}g`)
+    if (Math.abs(c.t - minute) <= window) near.push(`Carbs ${c.g}g`)
   })
   data.smbgRows.forEach((s) => {
-    if (Math.abs(s.t - minute) <= window) nearby.push(`Fingerstick ${s.v}`)
+    if (Math.abs(s.t - minute) <= window) near.push(`Fingerstick ${s.v}`)
   })
 
   return (
@@ -547,17 +582,21 @@ function HoverTooltip({ active, label, data }: { active?: boolean; label?: numbe
           </span>
         </div>
       ) : null}
-      <div
-        className="mono"
-        style={{ fontSize: 11, opacity: 0.85, marginTop: 4, display: "flex", gap: 10 }}
-      >
-        {basal ? <span>basal {basal.rate.toFixed(2)} U/h</span> : null}
-        {iob ? <span>IOB {iob.iob.toFixed(2)} U</span> : null}
-      </div>
-      {nearby.length > 0 ? (
-        <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid color-mix(in oklch, var(--bg) 20%, transparent)" }}>
-          {nearby.slice(0, 4).map((e, i) => (
-            <div key={i} className="mono" style={{ fontSize: 11, opacity: 0.85 }}>
+      {iob ? (
+        <div className="mono" style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>
+          IOB {iob.iob.toFixed(2)} U
+        </div>
+      ) : null}
+      {near.length > 0 ? (
+        <div
+          style={{
+            marginTop: 6,
+            paddingTop: 6,
+            borderTop: "1px solid color-mix(in oklch, var(--bg) 20%, transparent)",
+          }}
+        >
+          {near.slice(0, 5).map((e, i) => (
+            <div key={i} className="mono" style={{ fontSize: 11, opacity: 0.9 }}>
               · {e}
             </div>
           ))}
@@ -567,26 +606,3 @@ function HoverTooltip({ active, label, data }: { active?: boolean; label?: numbe
   )
 }
 
-/* ───── utilities ───── */
-function nearest<T extends { t: number }>(rows: T[], target: number): T | null {
-  if (!rows.length) return null
-  let best = rows[0]
-  let bestDist = Math.abs(best.t - target)
-  for (let i = 1; i < rows.length; i++) {
-    const d = Math.abs(rows[i].t - target)
-    if (d < bestDist) {
-      best = rows[i]
-      bestDist = d
-    }
-  }
-  return best
-}
-
-function roundTo(v: number, decimals: number): number {
-  const pow = 10 ** decimals
-  return Math.round(v * pow) / pow
-}
-
-// Keep the Bar import used in case we later switch to bar-style basal. No-op now.
-const _keep = Bar
-void _keep

@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 
+import { DailyTrace } from "@/components/charts/daily-trace"
 import { DayStrip } from "@/components/charts/day-strip"
 import { TIRStack } from "@/components/charts/tir-stack"
 import {
@@ -11,13 +12,16 @@ import { adaptDailySummaries, adaptPoints, adaptTIR } from "@/lib/backend-adapte
 import { useApiResource } from "@/lib/api"
 import type { GluPoint } from "@/lib/design-data"
 import { Icons } from "@/lib/design-icons"
-import type { OverviewResponse, TrendsResponse } from "@/types"
+import type { DailyResponse, OverviewResponse, TrendsResponse } from "@/types"
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
 
 export function OverviewPage({ token }: { token: string }) {
   const overview = useApiResource<OverviewResponse>("/app/api/overview", token)
   const trends = useApiResource<TrendsResponse>("/app/api/trends?days=14", token)
-  const [range, setRange] = useState<"3h" | "6h" | "24h" | "7d">("24h")
+  const daily = useApiResource<DailyResponse>(`/app/api/daily?date=${todayIso()}`, token)
 
   const breakdown = useMemo(
     () => (overview.data ? adaptTIR(overview.data.timeInRange, overview.data.narrowRange?.percent) : null),
@@ -125,20 +129,9 @@ export function OverviewPage({ token }: { token: string }) {
       <div className="panel">
         <PanelHead
           title="Today · glucose trace"
-          sub="Live glucose — carbs and boluses overlay when available"
+          sub="Carbs, boluses, SMBs and IOB overlayed on live glucose"
           right={
             <div className="row" style={{ gap: 8 }}>
-              <div className="tabs">
-                {(["3h", "6h", "24h", "7d"] as const).map((t) => (
-                  <button
-                    key={t}
-                    className={"tab" + (t === range ? " is-active" : "")}
-                    onClick={() => setRange(t)}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
               <span className="badge">
                 <span className="dot" style={{ background: "var(--carbs)" }} />
                 Carbs
@@ -147,12 +140,28 @@ export function OverviewPage({ token }: { token: string }) {
                 <span className="dot" style={{ background: "var(--bolus)" }} />
                 Bolus
               </span>
+              <span className="badge">
+                <span className="dot" style={{ background: "var(--smb)" }} />
+                SMB
+              </span>
             </div>
           }
         />
         <div style={{ padding: "6px 6px 16px" }}>
-          {sparkline.length > 0 ? (
-            <OverviewSparkTrace pts={sparkline} height={380} />
+          {daily.data && daily.data.glucose.length > 0 ? (
+            <DailyTrace
+              height={460}
+              showBands
+              defaultWindow="6h"
+              rangeStart={daily.data.rangeStart}
+              glucose={daily.data.glucose}
+              carbs={daily.data.carbs}
+              boluses={daily.data.boluses ?? daily.data.insulin}
+              smbs={daily.data.smbs ?? []}
+              tempBasals={daily.data.tempBasals ?? []}
+              basalProfile={daily.data.basalProfile}
+              smbgs={daily.data.smbgs ?? []}
+            />
           ) : (
             <div
               style={{
@@ -163,7 +172,7 @@ export function OverviewPage({ token }: { token: string }) {
                 fontSize: 12,
               }}
             >
-              Waiting for glucose readings…
+              {daily.loading ? "Loading today's trace…" : "No glucose readings for today yet."}
             </div>
           )}
         </div>
@@ -287,80 +296,6 @@ export function OverviewPage({ token }: { token: string }) {
   )
 }
 
-function OverviewSparkTrace({ pts, height }: { pts: GluPoint[]; height: number }) {
-  // Simple trace plotted full-width using indices for x — good when we only have sparkline data
-  const W = 1120
-  const PAD = { l: 44, r: 20, t: 14, b: 26 }
-  const inner = { top: PAD.t, bot: height - PAD.b }
-  const xs = (i: number) => PAD.l + (i / Math.max(1, pts.length - 1)) * (W - PAD.l - PAD.r)
-  const min = 40
-  const max = 300
-  const ys = (v: number) =>
-    inner.bot - Math.max(0, Math.min(1, (v - min) / (max - min))) * (inner.bot - inner.top)
-
-  const mgLabels = [54, 70, 140, 180, 250]
-
-  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xs(i)} ${ys(p.v)}`).join(" ")
-  const area =
-    path +
-    ` L ${xs(pts.length - 1)} ${inner.bot} L ${xs(0)} ${inner.bot} Z`
-
-  return (
-    <svg viewBox={`0 0 ${W} ${height}`} width="100%" style={{ display: "block" }}>
-      <defs>
-        <linearGradient id="ovGrad" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor="var(--st-in)" stopOpacity="0.18" />
-          <stop offset="1" stopColor="var(--st-in)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {[70, 180].map((m) => (
-        <line
-          key={m}
-          x1={PAD.l}
-          x2={W - PAD.r}
-          y1={ys(m)}
-          y2={ys(m)}
-          stroke={m === 70 ? "var(--st-low)" : "var(--st-high)"}
-          strokeDasharray="4 4"
-          strokeWidth="1"
-          opacity="0.55"
-        />
-      ))}
-      {mgLabels.map((m) => (
-        <g key={m}>
-          <line
-            x1={PAD.l}
-            x2={W - PAD.r}
-            y1={ys(m)}
-            y2={ys(m)}
-            stroke="var(--line-2)"
-            strokeDasharray="2 4"
-            opacity="0.9"
-          />
-          <text
-            x={PAD.l - 6}
-            y={ys(m) + 3}
-            textAnchor="end"
-            fontSize="10"
-            fontFamily="Geist Mono"
-            fill="var(--ink-4)"
-          >
-            {m}
-          </text>
-        </g>
-      ))}
-      <path d={area} fill="url(#ovGrad)" />
-      <path
-        d={path}
-        fill="none"
-        stroke="var(--st-in)"
-        strokeWidth="2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
 
 function ActivityRow({
   at,
