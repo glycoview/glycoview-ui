@@ -2,17 +2,18 @@ import { useMemo } from "react"
 
 import { DailyTrace } from "@/components/charts/daily-trace"
 import { DayStrip } from "@/components/charts/day-strip"
+import { MiniDailyBars } from "@/components/charts/mini-daily-bars"
+import { MiniDailyLine } from "@/components/charts/mini-daily-line"
 import { TIRStack } from "@/components/charts/tir-stack"
 import {
   KPI,
-  MetricCard,
   PanelHead,
 } from "@/components/dashboard/primitives"
-import { adaptDailySummaries, adaptPoints, adaptTIR } from "@/lib/backend-adapters"
+import { MetricTile } from "@/components/dashboard/metric-tile"
+import { adaptDailySummaries, adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
-import type { GluPoint } from "@/lib/design-data"
 import { Icons } from "@/lib/design-icons"
-import type { DailyResponse, OverviewResponse, TrendsResponse } from "@/types"
+import type { DailyResponse, DailySummary, OverviewResponse, TrendsResponse } from "@/types"
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
@@ -27,14 +28,11 @@ export function OverviewPage({ token }: { token: string }) {
     () => (overview.data ? adaptTIR(overview.data.timeInRange, overview.data.narrowRange?.percent) : null),
     [overview.data],
   )
-  const sparkline: GluPoint[] = useMemo(
-    () => (overview.data ? adaptPoints(overview.data.sparkline) : []),
-    [overview.data],
-  )
   const summaries = useMemo(
     () => (trends.data ? adaptDailySummaries(trends.data.daysSummary) : []),
     [trends.data],
   )
+  const backendDays: DailySummary[] = trends.data?.daysSummary ?? []
 
   if (overview.error) {
     return <ErrorBanner message={overview.error.message} />
@@ -208,17 +206,10 @@ export function OverviewPage({ token }: { token: string }) {
       </div>
 
       <div className="gv-grid gv-grid-4 mt-16">
-        {data.metrics.slice(0, 4).map((m) => (
-          <MetricCard
-            key={m.id ?? m.label}
-            title={m.label}
-            value={numericPart(m.value) || m.value}
-            unit={unitPart(m.value)}
-            color={severityColor(m.accent, m.warning)}
-            spark={sparkline.length > 0 ? sparkline.slice(-96) : undefined}
-            foot={m.detail}
-          />
-        ))}
+        <AvgGlucoseTile days={backendDays} />
+        <TirDailyTile days={backendDays} />
+        <DailyCarbsTile days={backendDays} />
+        <DailyInsulinTile days={backendDays} />
       </div>
 
       <div className="gv-grid gv-grid-2 mt-16">
@@ -403,11 +394,6 @@ function accentColor(accent?: string): string | null {
   }
 }
 
-function severityColor(accent?: string, warning?: boolean): string | undefined {
-  if (warning) return "var(--st-low)"
-  return accentColor(accent) ?? undefined
-}
-
 function numericPart(value: string): string {
   const match = value.match(/-?\d+(\.\d+)?/)
   return match ? match[0] : ""
@@ -428,3 +414,93 @@ function formatRelative(ms: number): string {
   return `${Math.round(hours / 24)}d`
 }
 
+/* ───── 4-tile metric strip ───── */
+
+function avg(values: number[]): number {
+  if (!values.length) return 0
+  return values.reduce((a, b) => a + b, 0) / values.length
+}
+
+function AvgGlucoseTile({ days }: { days: DailySummary[] }) {
+  const value = avg(days.filter((d) => d.avgGlucose > 0).map((d) => d.avgGlucose))
+  return (
+    <MetricTile
+      title="Avg glucose · 14d"
+      value={value ? Math.round(value).toString() : "—"}
+      unit="mg/dL"
+      sub="daily averages over the last two weeks"
+      chart={
+        <MiniDailyLine
+          days={days}
+          accessor={(d) => d.avgGlucose}
+          color="var(--ink)"
+          guides={[154]}
+          domain={[60, 260]}
+        />
+      }
+    />
+  )
+}
+
+function TirDailyTile({ days }: { days: DailySummary[] }) {
+  const value = avg(days.map((d) => d.tir))
+  return (
+    <MetricTile
+      title="Time in range · 14d"
+      value={value ? Math.round(value).toString() : "—"}
+      unit="%"
+      sub="per-day · green ≥ 70% · target"
+      color="var(--st-in)"
+      chart={
+        <MiniDailyBars
+          days={days}
+          accessor={(d) => d.tir}
+          guide={70}
+          colorFor={(v) => (v >= 70 ? "var(--st-in)" : v >= 50 ? "var(--st-high)" : "var(--st-vhigh)")}
+        />
+      }
+    />
+  )
+}
+
+function DailyCarbsTile({ days }: { days: DailySummary[] }) {
+  const vals = days.filter((d) => d.carbs > 0).map((d) => d.carbs)
+  const value = avg(vals)
+  return (
+    <MetricTile
+      title="Carbs · avg daily"
+      value={value ? Math.round(value).toString() : "—"}
+      unit="g/day"
+      sub={`${vals.length}/${days.length} days with logged carbs`}
+      color="var(--carbs)"
+      chart={
+        <MiniDailyBars
+          days={days}
+          accessor={(d) => d.carbs}
+          colorFor={() => "var(--carbs)"}
+        />
+      }
+    />
+  )
+}
+
+function DailyInsulinTile({ days }: { days: DailySummary[] }) {
+  const vals = days.filter((d) => d.insulin > 0).map((d) => d.insulin)
+  const value = avg(vals)
+  return (
+    <MetricTile
+      title="Insulin · avg daily TDD"
+      value={value ? value.toFixed(1) : "—"}
+      unit="U/day"
+      sub="bars show daily total dose"
+      color="var(--bolus)"
+      chart={
+        <MiniDailyBars
+          days={days}
+          accessor={(d) => d.insulin}
+          colorFor={() => "var(--bolus)"}
+        />
+      }
+    />
+  )
+}
