@@ -1,25 +1,7 @@
-import { Activity, ChartSpline, HeartPulse, LogOut, MonitorCog, Settings, Shield, UserRound } from "lucide-react"
 import { useMemo } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarRail,
-  SidebarSeparator,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
+import { BrandMark, Icons } from "@/lib/design-icons"
 import type { AppUser } from "@/types"
 
 type AppShellProps = {
@@ -27,119 +9,140 @@ type AppShellProps = {
   onLogout: () => void
 }
 
-const baseNavItems = [
-  { to: "/", label: "Overview", icon: Activity },
-  { to: "/daily", label: "Daily", icon: ChartSpline },
-  { to: "/trends", label: "Trends", icon: HeartPulse },
-  { to: "/profile", label: "Profile", icon: UserRound },
-  { to: "/devices", label: "Devices", icon: MonitorCog },
+type NavItemSpec = {
+  to: string
+  label: string
+  icon: React.ComponentType<{ size?: number }>
+  kbd: string
+}
+
+const dashboardItems: NavItemSpec[] = [
+  { to: "/", label: "Overview", icon: Icons.Activity, kbd: "1" },
+  { to: "/daily", label: "Daily", icon: Icons.Calendar, kbd: "2" },
+  { to: "/trends", label: "Trends", icon: Icons.Trend, kbd: "3" },
+  { to: "/profile", label: "Profile", icon: Icons.User, kbd: "4" },
+  { to: "/devices", label: "Devices", icon: Icons.Device, kbd: "5" },
 ]
 
-const pageMeta: Record<string, string> = {
+const adminItems: NavItemSpec[] = [
+  { to: "/users", label: "Access", icon: Icons.Shield, kbd: "6" },
+  { to: "/settings", label: "Settings", icon: Icons.Settings, kbd: "7" },
+]
+
+const titleMap: Record<string, string> = {
   "/": "Overview",
   "/daily": "Daily",
-	"/trends": "Trends",
+  "/trends": "Trends",
   "/profile": "Profile",
-	"/devices": "Devices",
-  "/users": "Users",
+  "/devices": "Devices",
+  "/users": "Access",
   "/settings": "Settings",
 }
 
 export function AppShell({ user, onLogout }: AppShellProps) {
   const location = useLocation()
-  const title = useMemo(() => pageMeta[location.pathname] ?? pageMeta["/"], [location.pathname])
-  const navItems = useMemo(
-    () =>
-      user.role === "admin"
-        ? [...baseNavItems, { to: "/users", label: "Users", icon: Shield }, { to: "/settings", label: "Settings", icon: Settings }]
-        : baseNavItems,
-    [user.role],
-  )
+  const title = useMemo(() => titleMap[location.pathname] ?? "Glycoview", [location.pathname])
+  const showAdmin = user.role === "admin"
   const userInitials = initials(user.displayName || user.username)
 
   return (
-    <SidebarProvider defaultOpen className="bg-background text-foreground">
-      <Sidebar collapsible="icon" className="border-r border-sidebar-border/80">
-        <SidebarHeader className="px-3 py-4">
-          <NavLink
-            to="/"
-            className="flex items-center gap-3 rounded-lg px-2 py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidebar-primary text-sm font-semibold text-sidebar-primary-foreground">
-              B
-            </div>
-            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-base font-semibold tracking-tight">GlycoView</div>
-              <div className="truncate text-xs text-muted-foreground">Clinical dashboard</div>
-            </div>
-          </NavLink>
-        </SidebarHeader>
-
-        <SidebarContent className="px-2">
-          <SidebarGroup className="p-0">
-            <SidebarGroupLabel className="px-2 text-[11px] font-semibold uppercase tracking-[0.18em]">
-              Workspace
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {navItems.map((item) => {
-                  const Icon = item.icon
-                  const isActive = item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
-
-                  return (
-                    <SidebarMenuItem key={item.to}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.label} className="h-10 rounded-lg px-3">
-                        <NavLink to={item.to}>
-                          <Icon />
-                          <span>{item.label}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-
-        <SidebarFooter className="px-3 pb-4 pt-2">
-          <SidebarSeparator />
-          <div className="flex items-center gap-3 px-2 py-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-            <Avatar size="sm">
-              <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">{userInitials}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <div className="truncate text-sm font-medium">{user.displayName}</div>
-              <div className="truncate text-xs uppercase tracking-[0.16em] text-muted-foreground">{user.role}</div>
-            </div>
+    <div className="gv-app">
+      <aside className="side">
+        <div className="side__brand">
+          <div className="brand__mark" aria-hidden="true">
+            <BrandMark size={24} />
           </div>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={onLogout} tooltip="Logout" className="h-10 rounded-lg px-3">
-                <LogOut />
-                <span>Logout</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
-        <SidebarRail />
-      </Sidebar>
-
-      <SidebarInset className="min-h-screen bg-transparent">
-        <header className="sticky top-0 z-20 border-b border-border/70 bg-background/90 backdrop-blur-sm">
-          <div className="flex h-16 items-center gap-3 px-4 sm:px-6 xl:px-8">
-            <SidebarTrigger className="text-muted-foreground" />
-            <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">{title}</h1>
-            </div>
+          <div className="brand__wm">
+            <b>Glycoview</b>
+            <span>Appliance · v0.9.3</span>
           </div>
+        </div>
+
+        <div className="side__group">
+          <div className="side__group-label">Dashboard</div>
+          <nav className="nav">
+            {dashboardItems.map((it) => (
+              <NavRow key={it.to} to={it.to} label={it.label} kbd={it.kbd} Icon={it.icon} />
+            ))}
+          </nav>
+        </div>
+
+        {showAdmin && (
+          <div className="side__group">
+            <div className="side__group-label">Install</div>
+            <nav className="nav">
+              {adminItems.map((it) => (
+                <NavRow key={it.to} to={it.to} label={it.label} kbd={it.kbd} Icon={it.icon} />
+              ))}
+            </nav>
+          </div>
+        )}
+
+        <div className="side__foot">
+          <div className="side__user">
+            <div className="av">{userInitials}</div>
+            <div className="side__user-meta">
+              <b>{user.displayName || user.username}</b>
+              <span>{user.role}</span>
+            </div>
+            <button
+              className="side__logout"
+              title="Sign out"
+              onClick={onLogout}
+              aria-label="Sign out"
+            >
+              <Icons.Logout size={13} />
+            </button>
+          </div>
+          <div className="side__env">
+            <span className="dot" /> Appliance online
+            <span className="mono" style={{ marginLeft: "auto", color: "var(--ink-4)" }}>
+              glycoview.local
+            </span>
+          </div>
+        </div>
+      </aside>
+
+      <div className="main-col">
+        <header className="top">
+          <div className="crumbs">
+            <span>Glycoview</span>
+            <span className="crumbs__sep">/</span>
+            <b>{title}</b>
+          </div>
+          <div className="top__spacer" />
         </header>
-
-        <main className="dashboard-grid min-h-[calc(100vh-4rem)] px-4 py-5 sm:px-6 xl:px-8 xl:py-6">
+        <main className="content-area">
           <Outlet />
         </main>
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
+  )
+}
+
+function NavRow({
+  to,
+  label,
+  kbd,
+  Icon,
+}: {
+  to: string
+  label: string
+  kbd: string
+  Icon: React.ComponentType<{ size?: number }>
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      className={({ isActive }) => "nav__item" + (isActive ? " is-active" : "")}
+    >
+      <span className="nav__icon">
+        <Icon size={15} />
+      </span>
+      <span className="nav__label">{label}</span>
+      <span className="nav__kbd">{kbd}</span>
+    </NavLink>
   )
 }
 

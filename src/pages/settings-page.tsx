@@ -1,5 +1,6 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
+import { KV } from "@/components/dashboard/primitives"
 import {
   applyUpdate,
   configureDynamicDNS,
@@ -14,10 +15,45 @@ import {
   syncDynamicDNS,
 } from "@/lib/api"
 import type { ApiError } from "@/lib/api"
-import type { ApplianceDynamicDNSConfig, ApplianceStatus, ApplianceTLSConfig, ChallengeOption, DynamicDNSProvider, TLSProvider, UpdateCheckResponse } from "@/types"
-import { DashboardSection } from "@/components/dashboard/section"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Icons } from "@/lib/design-icons"
+import type {
+  ApplianceDynamicDNSConfig,
+  ApplianceStatus,
+  ApplianceTLSConfig,
+  ChallengeOption,
+  DynamicDNSProvider,
+  TLSProvider,
+  UpdateCheckResponse,
+} from "@/types"
+
+type DisplayState = {
+  units: "mg/dL" | "mmol/L"
+  theme: "light" | "dark"
+  density: "compact" | "default" | "airy"
+  agpBands: "on" | "off"
+}
+
+const STORAGE_KEY = "gv_display_prefs"
+
+function loadPrefs(): DisplayState {
+  if (typeof window === "undefined") {
+    return { units: "mg/dL", theme: "light", density: "default", agpBands: "on" }
+  }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (raw)
+      return {
+        units: "mg/dL",
+        theme: "light",
+        density: "default",
+        agpBands: "on",
+        ...JSON.parse(raw),
+      }
+  } catch {
+    /* ignore */
+  }
+  return { units: "mg/dL", theme: "light", density: "default", agpBands: "on" }
+}
 
 type TLSForm = {
   domain: string
@@ -27,7 +63,7 @@ type TLSForm = {
   env: Record<string, string>
 }
 
-type DynamicDNSForm = {
+type DynDNSForm = {
   enabled: boolean
   provider: string
   zone: string
@@ -36,8 +72,9 @@ type DynamicDNSForm = {
 }
 
 export function SettingsPage() {
+  const [prefs, setPrefs] = useState<DisplayState>(loadPrefs)
   const [status, setStatus] = useState<ApplianceStatus | null>(null)
-  const [update, setUpdate] = useState<UpdateCheckResponse | null>(null)
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null)
   const [providers, setProviders] = useState<TLSProvider[]>([])
   const [challenges, setChallenges] = useState<ChallengeOption[]>([])
   const [dynamicDNSProviders, setDynamicDNSProviders] = useState<DynamicDNSProvider[]>([])
@@ -45,8 +82,8 @@ export function SettingsPage() {
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
+
   const [updateTag, setUpdateTag] = useState("")
-  const [includeAgent, setIncludeAgent] = useState(true)
   const [tlsForm, setTLSForm] = useState<TLSForm>({
     domain: "",
     email: "",
@@ -54,7 +91,7 @@ export function SettingsPage() {
     provider: "",
     env: {},
   })
-  const [dynamicDNSForm, setDynamicDNSForm] = useState<DynamicDNSForm>({
+  const [dynForm, setDynForm] = useState<DynDNSForm>({
     enabled: false,
     provider: "",
     zone: "",
@@ -62,45 +99,59 @@ export function SettingsPage() {
     env: {},
   })
 
-  const selectedProvider = useMemo(
-    () => providers.find((provider) => provider.id === tlsForm.provider) ?? null,
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", prefs.theme === "dark")
+    document.documentElement.dataset.density = prefs.density
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
+    } catch {
+      /* ignore */
+    }
+  }, [prefs])
+
+  const setPref = <K extends keyof DisplayState>(k: K, v: DisplayState[K]) =>
+    setPrefs((p) => ({ ...p, [k]: v }))
+
+  const selectedTLSProvider = useMemo(
+    () => providers.find((p) => p.id === tlsForm.provider) ?? null,
     [providers, tlsForm.provider],
   )
-  const selectedDynamicDNSProvider = useMemo(
-    () => dynamicDNSProviders.find((provider) => provider.id === dynamicDNSForm.provider) ?? null,
-    [dynamicDNSProviders, dynamicDNSForm.provider],
+  const selectedDynProvider = useMemo(
+    () => dynamicDNSProviders.find((p) => p.id === dynForm.provider) ?? null,
+    [dynamicDNSProviders, dynForm.provider],
   )
 
   const load = async () => {
     setLoading(true)
     try {
-      const [statusResponse, updateResponse, providersResponse, tlsResponse, dynamicDNSProvidersResponse, dynamicDNSResponse] = await Promise.all([
-        fetchSettingsStatus(),
-        fetchUpdateCheck(),
-        fetchTLSProviders(),
-        fetchTLSConfig(),
-        fetchDynamicDNSProviders(),
-        fetchDynamicDNSConfig(),
-      ])
-      setStatus(statusResponse)
-      setUpdate(updateResponse)
-      setProviders(providersResponse.providers)
-      setChallenges(providersResponse.challenges ?? [])
-      setDynamicDNSProviders(dynamicDNSProvidersResponse.providers)
-      setUpdateTag(updateResponse.latestTag || statusResponse.currentTag)
+      const [statusRes, updateRes, providersRes, tlsRes, dynProvRes, dynRes] =
+        await Promise.all([
+          fetchSettingsStatus(),
+          fetchUpdateCheck(),
+          fetchTLSProviders(),
+          fetchTLSConfig(),
+          fetchDynamicDNSProviders(),
+          fetchDynamicDNSConfig(),
+        ])
+      setStatus(statusRes)
+      setUpdateInfo(updateRes)
+      setProviders(providersRes.providers)
+      setChallenges(providersRes.challenges ?? [])
+      setDynamicDNSProviders(dynProvRes.providers)
+      setUpdateTag(updateRes.latestTag || statusRes.currentTag || "")
       setTLSForm({
-        domain: tlsResponse.domain || "",
-        email: tlsResponse.email || "",
-        challengeType: tlsResponse.challengeType === "dns-01" ? "dns-01" : "http-01",
-        provider: tlsResponse.provider || providersResponse.providers[0]?.id || "",
-        env: tlsResponse.env || {},
+        domain: tlsRes.domain || "",
+        email: tlsRes.email || "",
+        challengeType: tlsRes.challengeType === "dns-01" ? "dns-01" : "http-01",
+        provider: tlsRes.provider || providersRes.providers[0]?.id || "",
+        env: tlsRes.env || {},
       })
-      setDynamicDNSForm({
-        enabled: dynamicDNSResponse.enabled,
-        provider: dynamicDNSResponse.provider || dynamicDNSProvidersResponse.providers[0]?.id || "",
-        zone: dynamicDNSResponse.zone || "",
-        recordName: dynamicDNSResponse.recordName || "",
-        env: dynamicDNSResponse.env || {},
+      setDynForm({
+        enabled: dynRes.enabled,
+        provider: dynRes.provider || dynProvRes.providers[0]?.id || "",
+        zone: dynRes.zone || "",
+        recordName: dynRes.recordName || "",
+        env: dynRes.env || {},
       })
       setError("")
     } catch (err) {
@@ -115,81 +166,20 @@ export function SettingsPage() {
     load().catch(() => undefined)
   }, [])
 
-  const submitTLS = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setBusy("tls")
-    setMessage("")
-    setError("")
-    try {
-      const payload: ApplianceTLSConfig = {
-        domain: tlsForm.domain,
-        email: tlsForm.email,
-        challengeType: tlsForm.challengeType,
-        provider: tlsForm.challengeType === "dns-01" ? tlsForm.provider : "",
-        env: tlsForm.challengeType === "dns-01" ? tlsForm.env : {},
-      }
-      const result = await configureTLS(payload)
-      setMessage(result.message)
-      await load()
-    } catch (err) {
-      const apiError = err as ApiError
-      setError(apiError.message || "Failed to save TLS settings")
-    } finally {
-      setBusy("")
-    }
-  }
-
   const submitUpdate = async () => {
+    if (!updateTag.trim()) return
     setBusy("update")
     setMessage("")
     setError("")
     try {
-      const result = await applyUpdate({ tag: updateTag, includeAgent })
-      setMessage(result.message)
+      // includeAgent is always false: the agent cannot safely restart itself
+      // mid-deploy. Upgrading the agent requires reflashing the Pi image.
+      const result = await applyUpdate({ tag: updateTag.trim(), includeAgent: false })
+      setMessage(result.message || "Update applied")
       await load()
     } catch (err) {
       const apiError = err as ApiError
       setError(apiError.message || "Failed to apply update")
-    } finally {
-      setBusy("")
-    }
-  }
-
-  const submitDynamicDNS = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setBusy("dyndns")
-    setMessage("")
-    setError("")
-    try {
-      const payload: ApplianceDynamicDNSConfig = {
-        enabled: dynamicDNSForm.enabled,
-        provider: dynamicDNSForm.enabled ? dynamicDNSForm.provider : "",
-        zone: dynamicDNSForm.enabled ? dynamicDNSForm.zone : "",
-        recordName: dynamicDNSForm.enabled ? dynamicDNSForm.recordName : "",
-        env: dynamicDNSForm.enabled ? dynamicDNSForm.env : {},
-      }
-      const result = await configureDynamicDNS(payload)
-      setMessage(result.message)
-      await load()
-    } catch (err) {
-      const apiError = err as ApiError
-      setError(apiError.message || "Failed to save dynamic DNS settings")
-    } finally {
-      setBusy("")
-    }
-  }
-
-  const triggerDynamicDNSSync = async () => {
-    setBusy("dyndns-sync")
-    setMessage("")
-    setError("")
-    try {
-      const result = await syncDynamicDNS()
-      setMessage(result.message)
-      await load()
-    } catch (err) {
-      const apiError = err as ApiError
-      setError(apiError.message || "Failed to sync dynamic DNS")
     } finally {
       setBusy("")
     }
@@ -201,7 +191,7 @@ export function SettingsPage() {
     setError("")
     try {
       const result = await rollbackUpdate()
-      setMessage(result.message)
+      setMessage(result.message || "Rollback started")
       await load()
     } catch (err) {
       const apiError = err as ApiError
@@ -211,323 +201,560 @@ export function SettingsPage() {
     }
   }
 
+  const submitTLS = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy("tls")
+    setMessage("")
+    setError("")
+    try {
+      const payload: ApplianceTLSConfig = {
+        domain: tlsForm.domain.trim(),
+        email: tlsForm.email.trim(),
+        challengeType: tlsForm.challengeType,
+        provider: tlsForm.challengeType === "dns-01" ? tlsForm.provider : "",
+        env: tlsForm.challengeType === "dns-01" ? tlsForm.env : {},
+      }
+      const result = await configureTLS(payload)
+      setMessage(result.message || "TLS configuration saved")
+      await load()
+    } catch (err) {
+      const apiError = err as ApiError
+      setError(apiError.message || "Failed to save TLS settings")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const submitDynDNS = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setBusy("dyndns")
+    setMessage("")
+    setError("")
+    try {
+      const payload: ApplianceDynamicDNSConfig = {
+        enabled: dynForm.enabled,
+        provider: dynForm.enabled ? dynForm.provider : "",
+        zone: dynForm.enabled ? dynForm.zone.trim() : "",
+        recordName: dynForm.enabled ? dynForm.recordName.trim() : "",
+        env: dynForm.enabled ? dynForm.env : {},
+      }
+      const result = await configureDynamicDNS(payload)
+      setMessage(result.message || "Dynamic DNS saved")
+      await load()
+    } catch (err) {
+      const apiError = err as ApiError
+      setError(apiError.message || "Failed to save dynamic DNS settings")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const syncDynDNS = async () => {
+    setBusy("dyndns-sync")
+    setMessage("")
+    setError("")
+    try {
+      const result = await syncDynamicDNS()
+      setMessage(result.message || "Dynamic DNS synced")
+      await load()
+    } catch (err) {
+      const apiError = err as ApiError
+      setError(apiError.message || "Failed to sync dynamic DNS")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const updateAvailable = !!updateInfo?.updateAvailable
+  const currentTag = status?.currentTag || "—"
+  const latestTag = updateInfo?.latestTag || currentTag
+  const tlsAppliedAt = status?.tls?.appliedAt
+  const dynLastSyncedAt = status?.dynamicDns?.lastSyncedAt
+  const dynLastError = status?.dynamicDns?.lastError
+
   return (
-    <div className="space-y-6">
-      {error ? <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div> : null}
-      {message ? <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-foreground">{message}</div> : null}
+    <>
+      {error ? (
+        <div
+          className="panel"
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderColor: "color-mix(in oklch, var(--st-low) 40%, var(--line))",
+            color: "var(--st-low)",
+            fontSize: 13,
+          }}
+        >
+          {error}
+        </div>
+      ) : null}
+      {message ? (
+        <div
+          className="panel"
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderColor: "color-mix(in oklch, var(--st-in) 40%, var(--line))",
+            color: "var(--st-in)",
+            fontSize: 13,
+          }}
+        >
+          {message}
+        </div>
+      ) : null}
 
-      <DashboardSection title="System">
-        {loading || !status ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Current app tag" value={status.currentTag} />
-            <Metric label="Current agent tag" value={status.currentAgentTag || "n/a"} />
-            <Metric label="Docker control" value={status.dockerManaged ? "Available" : "Unavailable"} />
-            <Metric label="Last action" value={status.lastAction || "No actions yet"} detail={status.lastMessage} />
-          </div>
-        )}
-      </DashboardSection>
-
-      <DashboardSection title="Updates">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Target tag</label>
-              <Input value={updateTag} onChange={(event) => setUpdateTag(event.target.value)} placeholder="latest" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Latest release</label>
-              <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
-                {update?.latestTag || "Unavailable"}
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-foreground md:col-span-2">
-              <input
-                type="checkbox"
-                checked={includeAgent}
-                onChange={(event) => setIncludeAgent(event.target.checked)}
-                className="h-4 w-4 rounded border-border text-primary"
-              />
-              Update the appliance agent to the same tag
-            </label>
-            {update?.releaseUrl ? (
-              <a className="text-sm font-medium text-primary hover:underline md:col-span-2" href={update.releaseUrl} target="_blank" rel="noreferrer">
-                Open release notes
-              </a>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => load().catch(() => undefined)} disabled={busy !== ""}>
-              Refresh
-            </Button>
-            <Button type="button" variant="outline" onClick={submitRollback} disabled={busy !== ""}>
-              {busy === "rollback" ? "Rolling back…" : "Rollback"}
-            </Button>
-            <Button type="button" onClick={submitUpdate} disabled={busy !== "" || !updateTag.trim()}>
-              {busy === "update" ? "Applying…" : "Apply update"}
-            </Button>
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel__head">
+          <div className="flex-1">
+            <div className="gv-h3">Display preferences</div>
+            <div className="hint mt-4">Units, theme and chart density. Stored per device.</div>
           </div>
         </div>
-      </DashboardSection>
-
-      <DashboardSection title="TLS and domain">
-        <form onSubmit={submitTLS} className="space-y-6">
-          <p className="text-sm text-muted-foreground">
-            Trio requires a trusted HTTPS certificate to connect. Pick a challenge method below — DNS-01 is recommended for home users because it works behind any router without port forwarding.
-          </p>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Public domain">
-              <Input value={tlsForm.domain} onChange={(event) => setTLSForm((prev) => ({ ...prev, domain: event.target.value }))} placeholder="my-glycoview.duckdns.org" />
-              <p className="text-xs text-muted-foreground">The full hostname Trio will connect to. For DuckDNS use your <code>*.duckdns.org</code> name.</p>
-            </Field>
-            <Field label="Let's Encrypt email">
-              <Input value={tlsForm.email} onChange={(event) => setTLSForm((prev) => ({ ...prev, email: event.target.value }))} placeholder="you@example.com" />
-              <p className="text-xs text-muted-foreground">Used by Let's Encrypt for expiry notifications only. Never shared.</p>
-            </Field>
-          </div>
-
-          {challenges.length > 0 ? (
-            <div className="grid gap-3 md:grid-cols-2">
-              {challenges.map((challenge) => {
-                const active = tlsForm.challengeType === challenge.id
-                return (
-                  <button
-                    type="button"
-                    key={challenge.id}
-                    onClick={() =>
-                      setTLSForm((prev) => ({
-                        ...prev,
-                        challengeType: challenge.id === "dns-01" ? "dns-01" : "http-01",
-                        provider: challenge.id === "dns-01" ? prev.provider || providers[0]?.id || "" : "",
-                      }))
-                    }
-                    className={`text-left rounded-lg border px-4 py-3 transition ${active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/50"}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold text-foreground">{challenge.label}</div>
-                      {challenge.recommended ? (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Recommended</span>
-                      ) : null}
-                    </div>
-                    {challenge.description ? (
-                      <p className="mt-1 text-xs text-muted-foreground">{challenge.description}</p>
-                    ) : null}
-                    {challenge.instructions && challenge.instructions.length > 0 ? (
-                      <ul className="mt-2 space-y-1 text-xs text-muted-foreground list-disc pl-4">
-                        {challenge.instructions.map((line, i) => (
-                          <li key={i}>{line}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </button>
-                )
-              })}
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+          <div>
+            <div className="label">Glucose units</div>
+            <div className="seg">
+              {(["mg/dL", "mmol/L"] as const).map((u) => (
+                <button
+                  key={u}
+                  className={prefs.units === u ? "is-active" : ""}
+                  onClick={() => setPref("units", u)}
+                >
+                  {u}
+                </button>
+              ))}
             </div>
-          ) : null}
+            <div className="help">mmol/L = mg/dL ÷ 18.016</div>
+          </div>
+          <div>
+            <div className="label">Theme</div>
+            <div className="seg">
+              {(["light", "dark"] as const).map((v) => (
+                <button
+                  key={v}
+                  className={prefs.theme === v ? "is-active" : ""}
+                  onClick={() => setPref("theme", v)}
+                >
+                  {v === "light" ? "Light" : "Dark"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="label">Density</div>
+            <div className="seg">
+              {(["compact", "default", "airy"] as const).map((m) => (
+                <button
+                  key={m}
+                  className={prefs.density === m ? "is-active" : ""}
+                  onClick={() => setPref("density", m)}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="label">AGP percentile bands</div>
+            <div className="seg">
+              {(
+                [
+                  ["on", "Show"],
+                  ["off", "Hide"],
+                ] as const
+              ).map(([v, l]) => (
+                <button
+                  key={v}
+                  className={prefs.agpBands === v ? "is-active" : ""}
+                  onClick={() => setPref("agpBands", v)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
-          {tlsForm.challengeType === "dns-01" ? (
-            <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
-              <Field label="DNS provider">
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel__head">
+          <div className="flex-1">
+            <div className="gv-h3">Appliance</div>
+            <div className="hint mt-4">
+              {loading
+                ? "Loading appliance status…"
+                : status?.dockerManaged
+                  ? "Docker-managed appliance · controls below require the glycoview-agent"
+                  : "Running outside Docker · update controls are unavailable"}
+            </div>
+          </div>
+          {status ? (
+            <span className="badge badge--in">
+              <span className="dot" />
+              {status.dockerManaged ? "Healthy" : "Standalone"}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          <KV k="App tag" v={currentTag} />
+          <KV k="Agent tag" v={status?.currentAgentTag || "—"} />
+          <KV k="Stack" v={status?.stackName || "—"} />
+          <KV
+            k="Last action"
+            v={status?.lastAction ? `${status.lastAction}${status.lastActionAt ? " · " + timeAgo(status.lastActionAt) : ""}` : "None"}
+          />
+          <KV k="Stack file" v={status?.stackFile || "—"} mono />
+          <KV k="Public IP" v={status?.currentPublicIp || "—"} mono />
+          <KV k="Image" v={status?.currentImage || "—"} mono />
+          <KV k="Agent image" v={status?.currentAgentImage || "—"} mono />
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel__head">
+          <div className="flex-1">
+            <div className="gv-h3">Updates</div>
+            <div className="hint mt-4">
+              Current <span className="mono">{currentTag}</span>
+              {latestTag && latestTag !== currentTag ? (
+                <>
+                  {" · "}latest <span className="mono">{latestTag}</span>
+                </>
+              ) : null}
+              {updateInfo?.source ? (
+                <>
+                  {" · "}source <span className="mono">{updateInfo.source}</span>
+                </>
+              ) : null}
+            </div>
+          </div>
+          {updateInfo?.releaseUrl ? (
+            <a className="pill-btn" href={updateInfo.releaseUrl} target="_blank" rel="noreferrer">
+              Release notes
+            </a>
+          ) : null}
+        </div>
+        <div
+          style={{
+            padding: 16,
+            display: "grid",
+            gridTemplateColumns: "1fr auto auto",
+            gap: 10,
+            alignItems: "end",
+          }}
+        >
+          <div>
+            <div className="label">Target tag</div>
+            <input
+              className="input mono"
+              value={updateTag}
+              onChange={(e) => setUpdateTag(e.target.value)}
+              placeholder={latestTag}
+              disabled={!status?.dockerManaged}
+            />
+          </div>
+          <button
+            className="pill-btn"
+            onClick={submitRollback}
+            disabled={busy !== "" || !status?.dockerManaged}
+          >
+            <Icons.Refresh size={13} />
+            {busy === "rollback" ? "Rolling back…" : "Rollback"}
+          </button>
+          <button
+            className="pill-btn is-primary"
+            onClick={submitUpdate}
+            disabled={
+              busy !== "" || !updateTag.trim() || !status?.dockerManaged
+            }
+            title={!status?.dockerManaged ? "Not available outside Docker" : undefined}
+          >
+            <Icons.Play size={13} />
+            {busy === "update"
+              ? "Applying…"
+              : updateAvailable
+                ? "Apply update"
+                : "Reapply"}
+          </button>
+        </div>
+        <div
+          className="hint"
+          style={{ padding: "0 16px 16px", color: "var(--ink-4)" }}
+        >
+          {!status?.dockerManaged && !loading
+            ? "Updates are managed by the glycoview-agent on your Raspberry Pi. When this dashboard runs outside the appliance, use the host-side CLI."
+            : "Applies the dashboard image only. The appliance agent is upgraded by flashing a new Pi image."}
+        </div>
+      </div>
+
+      <div className="gv-grid gv-grid-2">
+        <form className="panel" onSubmit={submitTLS}>
+          <div className="panel__head">
+            <div className="gv-h3 flex-1">TLS &amp; public hostname</div>
+            {tlsAppliedAt ? (
+              <span className="badge badge--in">
+                <span className="dot" />
+                Applied {timeAgo(tlsAppliedAt)}
+              </span>
+            ) : (
+              <span className="badge">Not applied</span>
+            )}
+          </div>
+          <div style={{ padding: 16, display: "grid", gap: 14 }}>
+            <div>
+              <div className="label">Public domain</div>
+              <input
+                className="input mono"
+                value={tlsForm.domain}
+                onChange={(e) =>
+                  setTLSForm((p) => ({ ...p, domain: e.target.value }))
+                }
+                placeholder="my-glycoview.duckdns.org"
+              />
+              <div className="help">
+                The hostname your pump apps and shared viewers will connect to.
+              </div>
+            </div>
+            <div>
+              <div className="label">Let's Encrypt email</div>
+              <input
+                className="input"
+                value={tlsForm.email}
+                onChange={(e) =>
+                  setTLSForm((p) => ({ ...p, email: e.target.value }))
+                }
+                placeholder="you@example.com"
+              />
+              <div className="help">Used for expiry notifications only.</div>
+            </div>
+            {challenges.length > 0 ? (
+              <div>
+                <div className="label">Challenge</div>
+                <div className="seg" style={{ gridAutoColumns: "1fr 1fr" }}>
+                  {challenges.map((ch) => (
+                    <button
+                      type="button"
+                      key={ch.id}
+                      className={tlsForm.challengeType === ch.id ? "is-active" : ""}
+                      onClick={() =>
+                        setTLSForm((p) => ({
+                          ...p,
+                          challengeType: ch.id === "dns-01" ? "dns-01" : "http-01",
+                          provider:
+                            ch.id === "dns-01"
+                              ? p.provider || providers[0]?.id || ""
+                              : "",
+                        }))
+                      }
+                    >
+                      {ch.label}
+                      {ch.recommended ? " · recommended" : ""}
+                    </button>
+                  ))}
+                </div>
+                {tlsForm.challengeType === "dns-01" ? (
+                  <div className="help">DNS-01 works behind any router without port forwarding.</div>
+                ) : (
+                  <div className="help">HTTP-01 requires port 80 forwarded to the appliance.</div>
+                )}
+              </div>
+            ) : null}
+            {tlsForm.challengeType === "dns-01" ? (
+              <div>
+                <div className="label">DNS provider</div>
                 <select
+                  className="input"
                   value={tlsForm.provider}
-                  onChange={(event) => setTLSForm((prev) => ({ ...prev, provider: event.target.value, env: {} }))}
-                  className="flex h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  onChange={(e) =>
+                    setTLSForm((p) => ({ ...p, provider: e.target.value, env: {} }))
+                  }
                 >
                   <option value="">Select provider…</option>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.label}
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
                     </option>
                   ))}
                 </select>
-              </Field>
-
-              {selectedProvider ? (
-                <div className="space-y-3 rounded-md bg-background/60 p-4">
-                  {selectedProvider.description ? (
-                    <p className="text-sm text-foreground">{selectedProvider.description}</p>
-                  ) : null}
-                  {selectedProvider.instructions && selectedProvider.instructions.length > 0 ? (
-                    <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                      {selectedProvider.instructions.map((step, i) => (
-                        <li key={i}>{step}</li>
-                      ))}
-                    </ol>
-                  ) : null}
-                  {selectedProvider.docsUrl ? (
-                    <a href={selectedProvider.docsUrl} target="_blank" rel="noreferrer" className="inline-block text-sm font-medium text-primary hover:underline">
-                      Open provider dashboard →
-                    </a>
-                  ) : null}
-
-                  <div className="grid gap-3 pt-2 md:grid-cols-2">
-                    {selectedProvider.fields.map((field) => (
-                      <Field key={field.key} label={field.label}>
-                        <Input
+                {selectedTLSProvider ? (
+                  <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                    {selectedTLSProvider.fields.map((field) => (
+                      <div key={field.key}>
+                        <div className="label">{field.label}</div>
+                        <input
+                          className="input mono"
                           type={field.secret ? "password" : "text"}
                           value={tlsForm.env[field.key] || ""}
                           placeholder={field.placeholder}
-                          onChange={(event) =>
-                            setTLSForm((prev) => ({
-                              ...prev,
-                              env: {
-                                ...prev.env,
-                                [field.key]: event.target.value,
-                              },
+                          onChange={(e) =>
+                            setTLSForm((p) => ({
+                              ...p,
+                              env: { ...p.env, [field.key]: e.target.value },
                             }))
                           }
                         />
-                        {field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null}
-                      </Field>
+                        {field.help ? <div className="help">{field.help}</div> : null}
+                      </div>
                     ))}
                   </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
+            ) : null}
+            <div className="row" style={{ marginTop: 4 }}>
+              <div style={{ flex: 1 }} />
+              <button type="submit" className="pill-btn is-primary" disabled={busy !== ""}>
+                {busy === "tls" ? "Saving…" : "Save TLS settings"}
+              </button>
             </div>
-          ) : null}
-
-          <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-            <div className="text-sm text-muted-foreground">
-              {status?.tls.appliedAt ? `Last applied ${new Date(status.tls.appliedAt).toLocaleString()}` : "No TLS configuration has been applied yet."}
-            </div>
-            <Button type="submit" disabled={busy !== ""}>
-              {busy === "tls" ? "Saving…" : "Save TLS settings"}
-            </Button>
           </div>
         </form>
-      </DashboardSection>
 
-      <DashboardSection title="Dynamic DNS">
-        <form onSubmit={submitDynamicDNS} className="space-y-5">
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={dynamicDNSForm.enabled}
-              onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, enabled: event.target.checked }))}
-              className="h-4 w-4 rounded border-border text-primary"
-            />
-            Keep the public IP updated every 5 minutes
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <Field label="Provider">
+        <form className="panel" onSubmit={submitDynDNS}>
+          <div className="panel__head">
+            <div className="gv-h3 flex-1">Dynamic DNS</div>
+            {dynLastError ? (
+              <span className="badge badge--low">
+                <span className="dot" />
+                Error
+              </span>
+            ) : status?.dynamicDns?.enabled ? (
+              <span className="badge badge--in">
+                <span className="dot" />
+                {dynLastSyncedAt ? `Synced ${timeAgo(dynLastSyncedAt)}` : "Active"}
+              </span>
+            ) : (
+              <span className="badge">Disabled</span>
+            )}
+          </div>
+          <div style={{ padding: 16, display: "grid", gap: 14 }}>
+            <label className="row" style={{ gap: 8, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={dynForm.enabled}
+                onChange={(e) => setDynForm((p) => ({ ...p, enabled: e.target.checked }))}
+              />
+              Keep public IP updated every 5 minutes
+            </label>
+            <div>
+              <div className="label">Provider</div>
               <select
-                value={dynamicDNSForm.provider}
-                onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, provider: event.target.value }))}
-                disabled={!dynamicDNSForm.enabled}
-                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+                className="input"
+                value={dynForm.provider}
+                onChange={(e) => setDynForm((p) => ({ ...p, provider: e.target.value, env: {} }))}
+                disabled={!dynForm.enabled}
               >
-                <option value="">Select provider</option>
-                {dynamicDNSProviders.map((provider) => (
-                  <option key={provider.id} value={provider.id}>
-                    {provider.label}
+                <option value="">Select provider…</option>
+                {dynamicDNSProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
                   </option>
                 ))}
               </select>
-            </Field>
-            <Field label="Zone">
-              <Input
-                value={dynamicDNSForm.zone}
-                onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, zone: event.target.value }))}
-                placeholder="example.com"
-                disabled={!dynamicDNSForm.enabled}
-              />
-            </Field>
-            <Field label="Record name">
-              <Input
-                value={dynamicDNSForm.recordName}
-                onChange={(event) => setDynamicDNSForm((prev) => ({ ...prev, recordName: event.target.value }))}
-                placeholder="home.example.com"
-                disabled={!dynamicDNSForm.enabled}
-              />
-            </Field>
-          </div>
-
-          {dynamicDNSForm.enabled && selectedDynamicDNSProvider ? (
-            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4">
-              {selectedDynamicDNSProvider.description ? (
-                <p className="text-sm text-foreground">{selectedDynamicDNSProvider.description}</p>
-              ) : null}
-              {selectedDynamicDNSProvider.instructions && selectedDynamicDNSProvider.instructions.length > 0 ? (
-                <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-                  {selectedDynamicDNSProvider.instructions.map((step, i) => (
-                    <li key={i}>{step}</li>
-                  ))}
-                </ol>
-              ) : null}
-              {selectedDynamicDNSProvider.docsUrl ? (
-                <a href={selectedDynamicDNSProvider.docsUrl} target="_blank" rel="noreferrer" className="inline-block text-sm font-medium text-primary hover:underline">
-                  Open provider dashboard →
-                </a>
-              ) : null}
-
-              <div className="grid gap-3 pt-2 md:grid-cols-2 xl:grid-cols-3">
-                {selectedDynamicDNSProvider.fields.map((field) => (
-                  <Field key={field.key} label={field.label}>
-                    <Input
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <div className="label">Zone</div>
+                <input
+                  className="input mono"
+                  value={dynForm.zone}
+                  onChange={(e) => setDynForm((p) => ({ ...p, zone: e.target.value }))}
+                  placeholder="duckdns.org"
+                  disabled={!dynForm.enabled}
+                />
+              </div>
+              <div>
+                <div className="label">Record</div>
+                <input
+                  className="input mono"
+                  value={dynForm.recordName}
+                  onChange={(e) => setDynForm((p) => ({ ...p, recordName: e.target.value }))}
+                  placeholder="my-glycoview"
+                  disabled={!dynForm.enabled}
+                />
+              </div>
+            </div>
+            {selectedDynProvider && dynForm.enabled ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {selectedDynProvider.fields.map((field) => (
+                  <div key={field.key}>
+                    <div className="label">{field.label}</div>
+                    <input
+                      className="input mono"
                       type={field.secret ? "password" : "text"}
-                      value={dynamicDNSForm.env[field.key] || ""}
+                      value={dynForm.env[field.key] || ""}
                       placeholder={field.placeholder}
-                      onChange={(event) =>
-                        setDynamicDNSForm((prev) => ({
-                          ...prev,
-                          env: {
-                            ...prev.env,
-                            [field.key]: event.target.value,
-                          },
+                      onChange={(e) =>
+                        setDynForm((p) => ({
+                          ...p,
+                          env: { ...p.env, [field.key]: e.target.value },
                         }))
                       }
                     />
-                    {field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null}
-                  </Field>
+                    {field.help ? <div className="help">{field.help}</div> : null}
+                  </div>
                 ))}
               </div>
+            ) : null}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 8,
+                padding: 12,
+                background: "var(--bg-2)",
+                borderRadius: 10,
+                border: "1px solid var(--line)",
+              }}
+            >
+              <KV
+                k="Last IP"
+                v={status?.currentPublicIp || status?.dynamicDns?.lastKnownIp || "—"}
+                mono
+              />
+              <KV
+                k="Checked"
+                v={status?.dynamicDns?.lastCheckedAt ? timeAgo(status.dynamicDns.lastCheckedAt) : "Never"}
+              />
+              <KV
+                k="Synced"
+                v={dynLastSyncedAt ? timeAgo(dynLastSyncedAt) : "Never"}
+              />
             </div>
-          ) : null}
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Current public IP" value={status?.currentPublicIp || status?.dynamicDns.lastKnownIp || "Unknown"} />
-            <Metric label="Last checked" value={status?.dynamicDns.lastCheckedAt ? new Date(status.dynamicDns.lastCheckedAt).toLocaleString() : "Never"} />
-            <Metric label="Last synced" value={status?.dynamicDns.lastSyncedAt ? new Date(status.dynamicDns.lastSyncedAt).toLocaleString() : "Never"} />
-            <Metric label="Status" value={status?.dynamicDns.lastError || (status?.dynamicDns.enabled ? "Enabled" : "Disabled")} />
-          </div>
-
-          <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-            <div className="text-sm text-muted-foreground">
-              DuckDNS and Cloudflare are supported. The agent checks the public IPv4 every 5 minutes and updates the record when it changes.
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={triggerDynamicDNSSync} disabled={busy !== ""}>
+            {dynLastError ? (
+              <div className="help" style={{ color: "var(--st-low)" }}>
+                Last error: {dynLastError}
+              </div>
+            ) : null}
+            <div className="row">
+              <button
+                type="button"
+                className="pill-btn"
+                onClick={syncDynDNS}
+                disabled={busy !== "" || !status?.dynamicDns?.enabled}
+              >
+                <Icons.Refresh size={13} />
                 {busy === "dyndns-sync" ? "Syncing…" : "Sync now"}
-              </Button>
-              <Button type="submit" disabled={busy !== ""}>
-                {busy === "dyndns" ? "Saving…" : "Save dynamic DNS"}
-              </Button>
+              </button>
+              <div style={{ flex: 1 }} />
+              <button type="submit" className="pill-btn is-primary" disabled={busy !== ""}>
+                {busy === "dyndns" ? "Saving…" : "Save"}
+              </button>
             </div>
           </div>
         </form>
-      </DashboardSection>
-    </div>
+      </div>
+    </>
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="space-y-2">
-      <label className="text-sm font-medium text-foreground">{label}</label>
-      {children}
-    </div>
-  )
-}
-
-function Metric({ label, value, detail }: { label: string; value: string; detail?: string }) {
-  return (
-    <div className="space-y-1 rounded-lg border border-border bg-muted/30 px-4 py-3">
-      <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-      <div className="text-sm font-semibold text-foreground">{value}</div>
-      {detail ? <div className="text-sm text-muted-foreground">{detail}</div> : null}
-    </div>
-  )
+function timeAgo(input: string | Date): string {
+  const then = input instanceof Date ? input.getTime() : new Date(input).getTime()
+  if (!Number.isFinite(then)) return "—"
+  const diff = Date.now() - then
+  const mins = Math.max(0, Math.round(diff / 60000))
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 48) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
 }
