@@ -3,7 +3,7 @@ import { useMemo, useState } from "react"
 import { DailyTrace } from "@/components/charts/daily-trace"
 import { TIRStack } from "@/components/charts/tir-stack"
 import { KPI, PanelHead, Stat } from "@/components/dashboard/primitives"
-import { adaptDailyResponse, adaptTIR, eventLabel } from "@/lib/backend-adapters"
+import { adaptTIR, eventLabel } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import { Icons } from "@/lib/design-icons"
 import type { DailyResponse } from "@/types"
@@ -25,13 +25,12 @@ export function DailyPage({ token }: { token: string }) {
     token,
   )
 
-  const chart = useMemo(() => (data ? adaptDailyResponse(data) : null), [data])
   const breakdown = useMemo(() => (data ? adaptTIR(data.timeInRange) : null), [data])
 
   if (error) {
     return <ErrorBanner message={error.message} />
   }
-  if (loading || !data || !chart || !breakdown) {
+  if (loading || !data || !breakdown) {
     return <LoadingBanner label="Loading day…" />
   }
 
@@ -81,7 +80,7 @@ export function DailyPage({ token }: { token: string }) {
             </div>
             <div className="row mt-16" style={{ gap: 18 }}>
               <Stat label="Avg" value={avgMetric} foot="glucose" mono />
-              <Stat label="Readings" value={chart.pts.length.toString()} foot="5-min buckets" mono />
+              <Stat label="Readings" value={data.glucose.length.toString()} foot="5-min buckets" mono />
               <Stat label="Insulin" value={insulinMetric} mono />
             </div>
           </div>
@@ -105,7 +104,7 @@ export function DailyPage({ token }: { token: string }) {
             <KPI
               label="Events"
               value={data.metrics.find((m) => m.id === "events")?.value ?? "0"}
-              sub={`${chart.carbs.length + chart.boluses.length} logged`}
+              sub={`${data.carbs.length + (data.boluses?.length ?? data.insulin.length)} logged`}
             />
           </div>
         </div>
@@ -133,6 +132,10 @@ export function DailyPage({ token }: { token: string }) {
                 Bolus
               </span>
               <span className="badge">
+                <span className="dot" style={{ background: "var(--smb)" }} />
+                SMB
+              </span>
+              <span className="badge">
                 <span className="dot" style={{ background: "var(--basal)" }} />
                 Basal
               </span>
@@ -140,7 +143,18 @@ export function DailyPage({ token }: { token: string }) {
           }
         />
         <div style={{ padding: "6px 6px 16px" }}>
-          <DailyTrace height={480} showBands showSmb data={chart} />
+          <DailyTrace
+            height={520}
+            showBands
+            rangeStart={data.rangeStart}
+            glucose={data.glucose}
+            carbs={data.carbs}
+            boluses={data.boluses ?? data.insulin}
+            smbs={data.smbs ?? []}
+            tempBasals={data.tempBasals ?? []}
+            basalProfile={data.basalProfile}
+            smbgs={data.smbgs ?? []}
+          />
         </div>
       </div>
 

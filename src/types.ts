@@ -27,6 +27,7 @@ export type EventPoint = {
   label: string
   kind: string
   value: number
+  duration?: number
   subtitle?: string
 }
 
@@ -73,6 +74,10 @@ export type DailyResponse = {
   glucose: GlucosePoint[]
   carbs: EventPoint[]
   insulin: EventPoint[]
+  boluses?: EventPoint[]
+  smbs?: EventPoint[]
+  tempBasals?: EventPoint[]
+  smbgs?: EventPoint[]
   basalProfile: EventPoint[]
   timeInRange: TimeInRangeBand[]
   metrics: Metric[]

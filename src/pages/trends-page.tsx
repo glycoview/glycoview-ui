@@ -3,7 +3,7 @@ import { useMemo, useState } from "react"
 import { AGPChart } from "@/components/charts/agp-chart"
 import { TIRStack } from "@/components/charts/tir-stack"
 import { KPI, PanelHead, Stat } from "@/components/dashboard/primitives"
-import { adaptAGP, adaptTIR } from "@/lib/backend-adapters"
+import { adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import type { TrendsResponse } from "@/types"
 
@@ -17,7 +17,7 @@ export function TrendsPage({ token }: { token: string }) {
     token,
   )
 
-  const agp = useMemo(() => (data ? adaptAGP(data.agp) : []), [data])
+  const agp = useMemo(() => (data ? data.agp : []), [data])
   const breakdown = useMemo(() => (data ? adaptTIR(data.timeInRange) : null), [data])
   const nonEmptyBuckets = useMemo(
     () => (data ? data.agp.filter((b) => (b.points ?? 0) > 0).length : 0),
