@@ -13,7 +13,7 @@ import { MetricTile } from "@/components/dashboard/metric-tile"
 import { adaptDailySummaries, adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import { GMI_TARGET_ADULT_T1D, ea1cFromMgDl, gmiFromMgDl } from "@/lib/gmi"
-import { todayInTz } from "@/lib/time"
+import { todayInTz, userTimeZone } from "@/lib/time"
 import { Icons } from "@/lib/design-icons"
 import type { DailyResponse, DailySummary, OverviewResponse, TrendsResponse } from "@/types"
 
@@ -24,7 +24,10 @@ function todayIso(): string {
 export function OverviewPage({ token }: { token: string }) {
   const overview = useApiResource<OverviewResponse>("/app/api/overview", token)
   const trends = useApiResource<TrendsResponse>("/app/api/trends?days=14", token)
-  const daily = useApiResource<DailyResponse>(`/app/api/daily?date=${todayIso()}`, token)
+  const daily = useApiResource<DailyResponse>(
+    `/app/api/daily?date=${todayIso()}&tz=${encodeURIComponent(userTimeZone())}`,
+    token,
+  )
 
   const breakdown = useMemo(
     () => (overview.data ? adaptTIR(overview.data.timeInRange, overview.data.narrowRange?.percent) : null),

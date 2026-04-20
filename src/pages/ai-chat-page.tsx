@@ -129,14 +129,24 @@ export function AiChatPage({ user: _user }: Props) {
         maxWidth: 820,
         margin: "0 auto",
         width: "100%",
-        paddingBottom: 4,
+        // Always fill at least the viewport minus the top bar and content
+        // padding, so the composer (below a flexible spacer) is pinned to
+        // the bottom of the viewport when the conversation is short.
+        minHeight: "calc(100vh - 124px)",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {!hasMessages ? <EmptyState /> : null}
-      {turns.map((turn) => (
-        <TurnView key={turn.id} turn={turn} />
-      ))}
-      <div ref={bottomRef} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {!hasMessages ? <EmptyState /> : null}
+        {turns.map((turn) => (
+          <TurnView key={turn.id} turn={turn} />
+        ))}
+        <div ref={bottomRef} />
+        {/* spacer: absorbs extra height so the composer lives at the visual
+            bottom until the conversation grows past the viewport. */}
+        <div style={{ flex: 1, minHeight: 12 }} />
+      </div>
       <Composer value={input} onChange={setInput} onSubmit={send} onStop={stop} busy={busy} />
     </div>
   )

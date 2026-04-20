@@ -23,12 +23,12 @@ const dashboardItems: NavItemSpec[] = [
   { to: "/trends", label: "Trends", icon: Icons.Trend, kbd: "3" },
   { to: "/profile", label: "Profile", icon: Icons.User, kbd: "4" },
   { to: "/devices", label: "Devices", icon: Icons.Device, kbd: "5" },
-  { to: "/ai", label: "Glyco", icon: Icons.Sparkles, kbd: "8" },
+  { to: "/ai", label: "Glyco", icon: Icons.Sparkles, kbd: "6" },
 ]
 
 const adminItems: NavItemSpec[] = [
-  { to: "/users", label: "Access", icon: Icons.Shield, kbd: "6" },
-  { to: "/settings", label: "Settings", icon: Icons.Settings, kbd: "7" },
+  { to: "/users", label: "Access", icon: Icons.Shield, kbd: "7" },
+  { to: "/settings", label: "Settings", icon: Icons.Settings, kbd: "8" },
 ]
 
 const titleMap: Record<string, string> = {

@@ -20,7 +20,7 @@ export function DailyPage({ token }: { token: string }) {
   const tz = userTimeZone()
   const [date, setDate] = useState(() => todayInTz(tz))
   const { data, loading, error } = useApiResource<DailyResponse>(
-    `/app/api/daily?date=${date}`,
+    `/app/api/daily?date=${date}&tz=${encodeURIComponent(tz)}`,
     token,
   )
 
