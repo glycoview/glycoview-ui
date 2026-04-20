@@ -442,7 +442,7 @@ export function RuleBuilder({ value, onChange }: Props) {
       </div>
 
       <div className="rb__row">
-        <div className="rb__label">over the last</div>
+        <div className="rb__label">trailing window</div>
         <NumInput value={value.window.days} onChange={setDays} suffix="days" min={1} max={365} />
         <span className="rb__sep">measured</span>
         <select
@@ -455,6 +455,10 @@ export function RuleBuilder({ value, onChange }: Props) {
           <option value="week">per week</option>
         </select>
       </div>
+      <p className="rb__help" style={{ margin: 0 }}>
+        Only data from your <b>start date</b> onward counts — the effective window shrinks if the
+        goal is younger than the trailing length.
+      </p>
 
       {spec.hasFilter ? null : (
         <div className="rb__row">
@@ -574,7 +578,7 @@ export function summarisePredicate(p: Predicate): string {
     p.op === "between"
       ? `${p.value} – ${p.value2 ?? "?"} ${spec.unit}`
       : `${p.value}${spec.unit ? " " + spec.unit : ""}`
-  const window = `over ${p.window.days} day${p.window.days === 1 ? "" : "s"}`
+  const window = `trailing ${p.window.days} d`
   const perUnit = p.perUnit ? ` · every ${p.perUnit.kind}` : ""
-  return `${subject} ${comparator} ${rhs} ${window}${perUnit}`
+  return `${subject} ${comparator} ${rhs} · ${window}${perUnit}`
 }

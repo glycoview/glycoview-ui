@@ -1,4 +1,15 @@
 import { useMemo } from "react"
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
 
 import type { Progress } from "@/lib/goals-api"
 
@@ -7,230 +18,244 @@ type Props = {
   targetDate?: string
   goodDirection: "higher" | "lower"
   height?: number
+  /** When true, render a compact chart without axis labels (for goal cards). */
+  compact?: boolean
+}
+
+type Row = {
+  date: string
+  day: number
+  value: number | null
+  projected: number | null
+  met: boolean
+  isProjection: boolean
 }
 
 /**
- * Draws the daily series with a target line, a trend projection line and the
- * "fail region" shaded. Pure SVG so we don't pull another chart dep.
+ * Interactive goal-progress chart. Uses Recharts' ComposedChart with:
+ *   - area for the observed daily series (colored by met/not-met)
+ *   - dashed line for the linear projection into the future
+ *   - reference line for the target value
+ *   - tooltip on hover showing value + date + met state
  */
-export function GoalChart({ progress, targetDate, goodDirection, height = 170 }: Props) {
-  const { targetValue } = progress
-  const padL = 38
-  const padR = 12
-  const padT = 10
-  const padB = 22
+export function GoalChart({ progress, targetDate, goodDirection, height = 180, compact = false }: Props) {
+  const { data, xTicks, yDomain, targetLabel } = useMemo(() => {
+    const observed = progress.dailySeries.map((d, i) => ({
+      date: d.date,
+      day: i,
+      value: d.value,
+      projected: null as number | null,
+      met: d.met,
+      isProjection: false,
+    }))
 
-  const { pts, xMin, xMax, yMin, yMax, dates } = useMemo(() => {
-    const dates = progress.dailySeries.map((d) => d.date)
-    const base = progress.dailySeries.map((d, i) => ({ x: i, y: d.value, met: d.met, date: d.date }))
-    let xMin = 0
-    let xMax = Math.max(1, base.length - 1)
-    let yMin = Math.min(progress.targetValue, ...base.map((b) => b.y))
-    let yMax = Math.max(progress.targetValue, ...base.map((b) => b.y))
-    if (yMin === yMax) {
-      yMin -= 5
-      yMax += 5
+    // Extend with projection rows if we have a trajectory and a target date.
+    const rows: Row[] = [...observed]
+    if (progress.trajectory && targetDate && observed.length >= 2) {
+      const last = observed[observed.length - 1]
+      const dayMs = 24 * 60 * 60 * 1000
+      const lastDate = Date.parse(last.date + "T00:00:00Z")
+      const targetMs = Date.parse(targetDate + "T00:00:00Z")
+      if (Number.isFinite(lastDate) && Number.isFinite(targetMs) && targetMs > lastDate) {
+        const daysAhead = Math.min(365, Math.round((targetMs - lastDate) / dayMs))
+        for (let k = 1; k <= daysAhead; k++) {
+          const dDate = new Date(lastDate + k * dayMs).toISOString().slice(0, 10)
+          rows.push({
+            date: dDate,
+            day: observed.length - 1 + k,
+            value: null,
+            projected: last.value + progress.trajectory.slopePerDay * k,
+            met: false,
+            isProjection: true,
+          })
+        }
+        // Stitch the observed endpoint into the projection series for a
+        // continuous dashed line.
+        rows[observed.length - 1].projected = last.value
+      }
     }
-    const pad = (yMax - yMin) * 0.12
-    yMin -= pad
-    yMax += pad
-    // If trajectory projects to target date, stretch x axis so the projection
-    // line continues past the last observation.
-    if (progress.trajectory && targetDate && dates.length > 0) {
-      const lastDate = dates[dates.length - 1]
-      const extra = daysBetweenDates(lastDate, targetDate)
-      if (extra > 0) xMax = base.length - 1 + extra
+
+    // y-domain: a padded envelope around values AND target so the target line
+    // is always visible.
+    const vals = rows
+      .flatMap((r) => [r.value, r.projected])
+      .filter((v): v is number => v !== null && Number.isFinite(v))
+    const pool = [...vals, progress.targetValue]
+    let ymin = Math.min(...pool)
+    let ymax = Math.max(...pool)
+    if (ymin === ymax) {
+      ymin -= 1
+      ymax += 1
     }
-    return { pts: base, xMin, xMax, yMin, yMax, dates }
+    const pad = (ymax - ymin) * 0.15
+    ymin -= pad
+    ymax += pad
+
+    // 4 evenly spaced ticks on x.
+    const n = rows.length
+    const tickCount = Math.min(5, Math.max(2, Math.floor(n / 3)))
+    const xTicks: number[] = []
+    for (let i = 0; i < tickCount; i++) {
+      const idx = Math.round(((n - 1) * i) / Math.max(1, tickCount - 1))
+      xTicks.push(idx)
+    }
+
+    return {
+      data: rows,
+      xTicks,
+      yDomain: [ymin, ymax] as [number, number],
+      targetLabel: `target ${formatVal(progress.targetValue, progress.unit)}`,
+    }
   }, [progress, targetDate])
 
-  const w = 640
-  const h = height
-  const innerW = w - padL - padR
-  const innerH = h - padT - padB
-  const toX = (x: number) => padL + ((x - xMin) / Math.max(1, xMax - xMin)) * innerW
-  const toY = (y: number) => padT + (1 - (y - yMin) / Math.max(1e-9, yMax - yMin)) * innerH
-
-  // Trajectory projection line (if we have enough days)
-  const proj = progress.trajectory
-  const projPath = useMemo(() => {
-    if (!proj) return null
-    if (pts.length < 2) return null
-    const last = pts[pts.length - 1]
-    const endX = xMax
-    const endY = last.y + proj.slopePerDay * (endX - last.x)
-    return { x1: last.x, y1: last.y, x2: endX, y2: endY }
-  }, [proj, pts, xMax])
-
-  // Filled polyline
-  const linePath = useMemo(() => {
-    if (pts.length === 0) return ""
-    return pts
-      .map((p, i) => `${i === 0 ? "M" : "L"}${toX(p.x).toFixed(1)},${toY(p.y).toFixed(1)}`)
-      .join(" ")
-  }, [pts, xMin, xMax, yMin, yMax])
-
-  const targetY = toY(targetValue)
-  const failY = goodDirection === "higher" ? toY(yMin) : toY(yMax)
-  const failHeight = Math.abs(failY - targetY)
+  const metColor = progress.met ? "var(--st-in)" : "var(--accent-2)"
+  const goodColor = "var(--st-in)"
+  const badColor = goodDirection === "higher" ? "var(--st-low)" : "var(--st-vhigh)"
 
   return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      width="100%"
-      height={h}
-      style={{ display: "block" }}
-      preserveAspectRatio="none"
-    >
-      <rect
-        x={padL}
-        y={goodDirection === "higher" ? targetY : padT}
-        width={innerW}
-        height={goodDirection === "higher" ? failHeight : targetY - padT}
-        fill="color-mix(in oklch, var(--st-low) 10%, transparent)"
-      />
-      <rect
-        x={padL}
-        y={goodDirection === "higher" ? padT : targetY}
-        width={innerW}
-        height={goodDirection === "higher" ? targetY - padT : failHeight}
-        fill="color-mix(in oklch, var(--st-in) 10%, transparent)"
-      />
+    <div style={{ width: "100%", height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart
+          data={data}
+          margin={{ top: 10, right: compact ? 8 : 20, left: compact ? -10 : 0, bottom: compact ? 0 : 6 }}
+        >
+          <defs>
+            <linearGradient id="goalFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={metColor} stopOpacity={0.35} />
+              <stop offset="1" stopColor={metColor} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
 
-      {/* grid */}
-      {[0, 1, 2, 3].map((i) => {
-        const y = padT + (i / 3) * innerH
-        return (
-          <line
-            key={i}
-            x1={padL}
-            y1={y}
-            x2={w - padR}
-            y2={y}
-            stroke="var(--line-2)"
-            strokeWidth={1}
-            strokeDasharray="2 4"
+          <CartesianGrid vertical={false} stroke="var(--line-2)" strokeDasharray="2 4" />
+
+          <XAxis
+            dataKey="day"
+            type="number"
+            domain={[0, Math.max(1, data.length - 1)]}
+            ticks={xTicks}
+            tickFormatter={(i: number) => shortDate(data[i]?.date ?? "")}
+            stroke="var(--ink-4)"
+            fontSize={10.5}
+            tick={{ fill: "var(--ink-4)", fontFamily: "var(--font-mono)" }}
+            tickLine={false}
+            axisLine={{ stroke: "var(--line)" }}
+            interval={0}
           />
-        )
-      })}
+          <YAxis
+            domain={yDomain}
+            stroke="var(--ink-4)"
+            fontSize={10.5}
+            tick={{ fill: "var(--ink-4)", fontFamily: "var(--font-mono)" }}
+            tickLine={false}
+            axisLine={false}
+            width={compact ? 34 : 44}
+            tickFormatter={(v: number) => formatAxis(v, progress.unit)}
+          />
 
-      {/* y-axis ticks */}
-      {[yMin, (yMin + yMax) / 2, yMax].map((yv, i) => (
-        <text
-          key={i}
-          x={padL - 6}
-          y={toY(yv) + 4}
-          fontSize={10}
-          fill="var(--ink-4)"
-          fontFamily="var(--font-mono)"
-          textAnchor="end"
-        >
-          {formatAxisValue(yv, progress.unit)}
-        </text>
-      ))}
+          <Tooltip
+            cursor={{ stroke: "var(--line)", strokeWidth: 1 }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null
+              const row = payload[0].payload as Row
+              const value = row.value ?? row.projected
+              if (value === null || value === undefined) return null
+              return (
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    fontSize: 12,
+                    boxShadow: "0 6px 20px oklch(0 0 0 / 10%)",
+                  }}
+                >
+                  <div className="mono" style={{ color: "var(--ink-3)", fontSize: 11 }}>
+                    {row.date}
+                  </div>
+                  <div className="mono" style={{ fontSize: 14, marginTop: 2, fontWeight: 500 }}>
+                    {formatVal(value, progress.unit)}
+                  </div>
+                  {row.isProjection ? (
+                    <div style={{ color: "var(--accent-2)", fontSize: 11, marginTop: 2 }}>
+                      projected
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        color: row.met ? goodColor : badColor,
+                        fontSize: 11,
+                        marginTop: 2,
+                      }}
+                    >
+                      {row.met ? "on target" : "below target"}
+                    </div>
+                  )}
+                </div>
+              )
+            }}
+          />
 
-      {/* Target line */}
-      <line
-        x1={padL}
-        y1={targetY}
-        x2={w - padR}
-        y2={targetY}
-        stroke="var(--ink-3)"
-        strokeWidth={1.25}
-        strokeDasharray="5 4"
-      />
-      <text
-        x={w - padR - 4}
-        y={targetY - 4}
-        fontSize={10}
-        fill="var(--ink-3)"
-        textAnchor="end"
-        fontFamily="var(--font-mono)"
-      >
-        target {formatAxisValue(targetValue, progress.unit)}
-      </text>
+          <ReferenceLine
+            y={progress.targetValue}
+            stroke="var(--ink-3)"
+            strokeDasharray="5 4"
+            strokeWidth={1.25}
+            label={{
+              value: targetLabel,
+              position: "insideTopRight",
+              fill: "var(--ink-3)",
+              fontSize: 10.5,
+              fontFamily: "var(--font-mono)",
+            }}
+          />
 
-      {/* Projection */}
-      {projPath ? (
-        <line
-          x1={toX(projPath.x1)}
-          y1={toY(projPath.y1)}
-          x2={toX(projPath.x2)}
-          y2={toY(projPath.y2)}
-          stroke="var(--accent-2)"
-          strokeWidth={1.5}
-          strokeDasharray="3 4"
-          opacity={0.85}
-        />
-      ) : null}
-
-      {/* Daily series */}
-      <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth={1.75} />
-      {pts.map((p, i) => (
-        <circle
-          key={i}
-          cx={toX(p.x)}
-          cy={toY(p.y)}
-          r={2.8}
-          fill={p.met ? "var(--st-in)" : "var(--st-vhigh)"}
-          stroke="var(--surface)"
-          strokeWidth={1}
-        />
-      ))}
-
-      {/* x-axis labels — first and last */}
-      {dates.length > 0 ? (
-        <text x={padL} y={h - 6} fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-mono)">
-          {shortDate(dates[0])}
-        </text>
-      ) : null}
-      {dates.length > 0 ? (
-        <text
-          x={toX(pts[pts.length - 1]?.x ?? 0)}
-          y={h - 6}
-          fontSize={10}
-          fill="var(--ink-4)"
-          fontFamily="var(--font-mono)"
-          textAnchor="middle"
-        >
-          {shortDate(dates[dates.length - 1])}
-        </text>
-      ) : null}
-      {targetDate && projPath ? (
-        <text
-          x={toX(projPath.x2) - 4}
-          y={h - 6}
-          fontSize={10}
-          fill="var(--accent-2)"
-          fontFamily="var(--font-mono)"
-          textAnchor="end"
-        >
-          {shortDate(targetDate)}
-        </text>
-      ) : null}
-
-    </svg>
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={metColor}
+            strokeWidth={2}
+            fill="url(#goalFill)"
+            dot={{ r: 2.8, stroke: "var(--surface)", strokeWidth: 1, fill: metColor }}
+            activeDot={{ r: 4.5, stroke: "var(--surface)", strokeWidth: 1.5 }}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="projected"
+            stroke="var(--accent-2)"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            dot={false}
+            activeDot={{ r: 3.5 }}
+            isAnimationActive={false}
+            connectNulls
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   )
 }
 
-function formatAxisValue(v: number, unit: string): string {
-  if (unit === "%") return v.toFixed(0) + "%"
-  if (unit === "mg/dL") return v.toFixed(0)
-  if (unit === "events") return v.toFixed(0)
-  if (unit === "min") return v.toFixed(0)
+function formatVal(v: number, unit: string): string {
+  if (!Number.isFinite(v)) return "—"
+  if (unit === "%") return `${v.toFixed(1)}%`
+  if (unit === "mg/dL") return `${Math.round(v)} mg/dL`
+  if (unit === "events") return `${Math.round(v)}`
+  if (unit === "min") return `${Math.round(v)} min`
+  return v.toFixed(1)
+}
+
+function formatAxis(v: number, unit: string): string {
+  if (unit === "%") return `${Math.round(v)}`
+  if (unit === "mg/dL") return `${Math.round(v)}`
+  if (unit === "events") return `${Math.round(v)}`
+  if (unit === "min") return `${Math.round(v)}`
   return v.toFixed(1)
 }
 
 function shortDate(iso: string): string {
-  // YYYY-MM-DD → MM-DD
-  if (!iso || iso.length < 10) return iso
+  if (!iso || iso.length < 10) return ""
   return iso.slice(5)
 }
-
-function daysBetweenDates(a: string, b: string): number {
-  const da = Date.parse(a + "T00:00:00Z")
-  const db = Date.parse(b + "T00:00:00Z")
-  if (Number.isNaN(da) || Number.isNaN(db)) return 0
-  return Math.round((db - da) / (24 * 3600 * 1000))
-}
-

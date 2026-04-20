@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react"
 
-import { PanelHead } from "@/components/dashboard/primitives"
 import { GoalChart } from "@/components/goals/goal-chart"
 import {
   GoalEditor,
@@ -8,7 +7,7 @@ import {
   labelForState,
   stateBadgeClass,
 } from "@/components/goals/goal-editor"
-import { summarisePredicate, findSpec } from "@/components/goals/rule-builder"
+import { findSpec, summarisePredicate } from "@/components/goals/rule-builder"
 import {
   deleteGoal,
   setGoalStatus,
@@ -39,7 +38,7 @@ export function GoalsPage() {
     let behind = 0
     for (const g of list) {
       const s = g.progress?.state ?? "ongoing"
-      if (s === "on_track") onTrack++
+      if (s === "on_track" || s === "ongoing") onTrack++
       else if (s === "smashing") smashing++
       else if (s === "at_risk") atRisk++
       else if (s === "behind") behind++
@@ -47,8 +46,14 @@ export function GoalsPage() {
     return { total: list.length, onTrack, smashing, atRisk, behind }
   }, [active])
 
+  const mood = moodFromStats(stats)
+
   if (loading) {
-    return <div className="panel" style={{ padding: 24 }}><span className="hint">Loading goals…</span></div>
+    return (
+      <div className="panel" style={{ padding: 24 }}>
+        <span className="hint">Loading goals…</span>
+      </div>
+    )
   }
   if (error) {
     return (
@@ -58,54 +63,59 @@ export function GoalsPage() {
     )
   }
 
+  const mkDelete = async (g: GoalWithProgress) => {
+    if (!confirm(`Delete "${g.title}"?`)) return
+    try {
+      await deleteGoal(g.id)
+      refresh()
+    } catch (e) {
+      setActionError((e as { message?: string })?.message ?? "delete failed")
+    }
+  }
+
   return (
     <>
-      <div className="gv-grid gv-grid-hero" style={{ marginBottom: 16 }}>
-        <div className="panel" style={{ padding: 20 }}>
-          <div className="kicker">Your goals</div>
-          <div className="row" style={{ alignItems: "baseline", gap: 10, marginTop: 6 }}>
-            <div className="num-xl mono" style={{ fontSize: "clamp(40px, 8vw, 62px)", lineHeight: 1 }}>
-              {stats?.total ?? 0}
+      <div className="goals-hero">
+        <div
+          className="panel goals-hero__main"
+          style={{
+            background: mood.bgGradient,
+            borderColor: mood.borderColor,
+          }}
+        >
+          <div className="goals-hero__meta">
+            <div className="kicker" style={{ color: mood.mutedInk }}>
+              Your goals
             </div>
-            <span className="hint mono">active</span>
+            <div className="goals-hero__count">
+              <span className="num-xl mono">{stats?.total ?? 0}</span>
+              <span className="hint mono">active</span>
+            </div>
+            <div className="goals-hero__headline" style={{ color: mood.ink }}>
+              {mood.headline}
+            </div>
+            <div className="goals-hero__sub" style={{ color: mood.mutedInk }}>
+              {stats
+                ? summariseStats(stats)
+                : "Start from a preset — TIR, hypo safety, GMI and more. Your progress evaluates live against your CGM data."}
+            </div>
           </div>
-          <div className="hint mt-8">
-            {stats
-              ? `${stats.smashing} crushing · ${stats.onTrack} on track · ${stats.atRisk} at risk · ${stats.behind} behind`
-              : "No active goals yet. Start with a preset — TIR, hypo safety, GMI and more."}
-          </div>
-          <div className="row mt-16" style={{ gap: 8 }}>
-            <button
-              className="pill-btn is-primary"
-              type="button"
-              onClick={() => setEditing("new")}
-            >
+          <div className="goals-hero__cta">
+            <button className="pill-btn is-primary" type="button" onClick={() => setEditing("new")}>
               <Icons.Plus size={13} /> New goal
             </button>
-            <label className="pill-btn" style={{ cursor: "pointer" }}>
+            <label className="goals-archive-toggle">
               <input
                 type="checkbox"
                 checked={includeArchived}
                 onChange={(e) => setIncludeArchived(e.target.checked)}
-                style={{ marginRight: 6 }}
               />
-              Show archived
+              <span>Show archived</span>
             </label>
           </div>
         </div>
-        <div className="panel" style={{ padding: 20 }}>
-          <div className="kicker">How this works</div>
-          <div className="mt-8" style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.55 }}>
-            Every goal is a <b>predicate</b> — a math rule evaluated daily against your CGM data.
-            Pick from presets like <i>Time in range ≥ 70%</i> or build your own: percentiles,
-            event counts, night-only filters, weekly caps. Glyco reads every goal with{" "}
-            <span className="mono">get_goals</span> so you can ask it "am I on track?" any time.
-          </div>
-          <div className="mt-8" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <span className="badge badge--in">on track = meeting or projected to meet</span>
-            <span className="badge badge--high">at risk = small gap, fixable</span>
-            <span className="badge badge--low">behind = missing by &gt; 20%</span>
-          </div>
+        <div className="panel goals-hero__ring">
+          <MoodRing stats={stats} />
         </div>
       </div>
 
@@ -120,64 +130,46 @@ export function GoalsPage() {
       ) : null}
 
       {active.length > 0 ? (
-        <Section title="Active" sub="Evaluated live against your CGM data">
-          <GoalGrid
-            goals={active}
-            onEdit={(g) => setEditing(g)}
-            onArchive={async (g) => {
-              try {
-                await setGoalStatus(g.id, "archived")
-                refresh()
-              } catch (e: unknown) {
-                setActionError((e as { message?: string })?.message ?? "archive failed")
-              }
-            }}
-            onMarkAchieved={async (g) => {
-              try {
-                await setGoalStatus(g.id, "achieved")
-                refresh()
-              } catch (e: unknown) {
-                setActionError((e as { message?: string })?.message ?? "status update failed")
-              }
-            }}
-            onDelete={async (g) => {
-              if (!confirm(`Delete "${g.title}"?`)) return
-              try {
-                await deleteGoal(g.id)
-                refresh()
-              } catch (e: unknown) {
-                setActionError((e as { message?: string })?.message ?? "delete failed")
-              }
-            }}
-          />
-        </Section>
+        <GoalSection
+          title="Active"
+          goals={active}
+          onEdit={(g) => setEditing(g)}
+          onArchive={async (g) => {
+            try {
+              await setGoalStatus(g.id, "archived")
+              refresh()
+            } catch (e) {
+              setActionError((e as { message?: string })?.message ?? "archive failed")
+            }
+          }}
+          onMarkAchieved={async (g) => {
+            try {
+              await setGoalStatus(g.id, "achieved")
+              refresh()
+            } catch (e) {
+              setActionError((e as { message?: string })?.message ?? "status update failed")
+            }
+          }}
+          onDelete={mkDelete}
+        />
       ) : null}
 
       {achieved.length > 0 ? (
-        <Section title="Achieved" sub="Celebrate the wins">
-          <GoalGrid goals={achieved} onEdit={(g) => setEditing(g)} onDelete={async (g) => {
-            if (!confirm(`Delete "${g.title}"?`)) return
-            try { await deleteGoal(g.id); refresh() } catch (e) { setActionError((e as { message?: string })?.message ?? "delete failed") }
-          }} />
-        </Section>
+        <GoalSection
+          title="Achieved"
+          subtitle="Celebrate the wins"
+          goals={achieved}
+          onEdit={(g) => setEditing(g)}
+          onDelete={mkDelete}
+        />
       ) : null}
 
       {paused.length > 0 ? (
-        <Section title="Paused">
-          <GoalGrid goals={paused} onEdit={(g) => setEditing(g)} onDelete={async (g) => {
-            if (!confirm(`Delete "${g.title}"?`)) return
-            try { await deleteGoal(g.id); refresh() } catch (e) { setActionError((e as { message?: string })?.message ?? "delete failed") }
-          }} />
-        </Section>
+        <GoalSection title="Paused" goals={paused} onEdit={(g) => setEditing(g)} onDelete={mkDelete} />
       ) : null}
 
       {includeArchived && archived.length > 0 ? (
-        <Section title="Archived">
-          <GoalGrid goals={archived} onEdit={(g) => setEditing(g)} onDelete={async (g) => {
-            if (!confirm(`Delete "${g.title}"?`)) return
-            try { await deleteGoal(g.id); refresh() } catch (e) { setActionError((e as { message?: string })?.message ?? "delete failed") }
-          }} />
-        </Section>
+        <GoalSection title="Archived" goals={archived} onEdit={(g) => setEditing(g)} onDelete={mkDelete} />
       ) : null}
 
       {editing ? (
@@ -194,11 +186,133 @@ export function GoalsPage() {
   )
 }
 
-function Section({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
+type Mood = {
+  headline: string
+  ink: string
+  mutedInk: string
+  bgGradient: string
+  borderColor: string
+}
+
+function moodFromStats(stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number } | null): Mood {
+  if (!stats || stats.total === 0) {
+    return {
+      headline: "No goals yet — let's set one",
+      ink: "var(--ink)",
+      mutedInk: "var(--ink-3)",
+      bgGradient: "var(--surface)",
+      borderColor: "var(--line)",
+    }
+  }
+  if (stats.behind > 0) {
+    return {
+      headline: "Some goals need attention",
+      ink: "var(--ink)",
+      mutedInk: "var(--ink-3)",
+      bgGradient:
+        "linear-gradient(135deg, color-mix(in oklch, var(--st-low) 9%, var(--surface)), var(--surface))",
+      borderColor: "color-mix(in oklch, var(--st-low) 35%, var(--line))",
+    }
+  }
+  if (stats.atRisk > 0) {
+    return {
+      headline: "A nudge away from on track",
+      ink: "var(--ink)",
+      mutedInk: "var(--ink-3)",
+      bgGradient:
+        "linear-gradient(135deg, color-mix(in oklch, var(--st-vhigh) 9%, var(--surface)), var(--surface))",
+      borderColor: "color-mix(in oklch, var(--st-vhigh) 30%, var(--line))",
+    }
+  }
+  if (stats.smashing > 0) {
+    return {
+      headline: "You're crushing it",
+      ink: "var(--ink)",
+      mutedInk: "var(--ink-3)",
+      bgGradient:
+        "linear-gradient(135deg, color-mix(in oklch, var(--st-in) 14%, var(--surface)), var(--surface))",
+      borderColor: "color-mix(in oklch, var(--st-in) 40%, var(--line))",
+    }
+  }
+  return {
+    headline: "All goals on track",
+    ink: "var(--ink)",
+    mutedInk: "var(--ink-3)",
+    bgGradient:
+      "linear-gradient(135deg, color-mix(in oklch, var(--st-in) 10%, var(--surface)), var(--surface))",
+    borderColor: "color-mix(in oklch, var(--st-in) 30%, var(--line))",
+  }
+}
+
+function summariseStats(stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number }) {
+  const parts: string[] = []
+  if (stats.smashing) parts.push(`${stats.smashing} crushing`)
+  if (stats.onTrack) parts.push(`${stats.onTrack} on track`)
+  if (stats.atRisk) parts.push(`${stats.atRisk} at risk`)
+  if (stats.behind) parts.push(`${stats.behind} behind`)
+  return parts.join(" · ") || "Waiting for enough data to score."
+}
+
+function MoodRing({ stats }: { stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number } | null }) {
+  const total = stats?.total ?? 0
+  const good = (stats?.smashing ?? 0) + (stats?.onTrack ?? 0)
+  const ratio = total === 0 ? 0 : good / total
+  const pct = Math.round(ratio * 100)
+  const r = 48
+  const c = 2 * Math.PI * r
+  const offset = c - c * ratio
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
-      <PanelHead title={title} sub={sub} />
-      <div className="panel__body">{children}</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <defs>
+          <linearGradient id="moodG" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="var(--st-in)" />
+            <stop offset="1" stopColor="var(--accent-2)" />
+          </linearGradient>
+        </defs>
+        <circle cx="60" cy="60" r={r} stroke="var(--line-2)" strokeWidth={10} fill="none" />
+        <circle
+          cx="60"
+          cy="60"
+          r={r}
+          stroke="url(#moodG)"
+          strokeWidth={10}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          transform="rotate(-90 60 60)"
+          style={{ transition: "stroke-dashoffset 480ms ease" }}
+        />
+        <text
+          x="60"
+          y="57"
+          textAnchor="middle"
+          fontSize="28"
+          fontFamily="var(--font-mono)"
+          fill="var(--ink)"
+          fontWeight="500"
+        >
+          {pct}%
+        </text>
+        <text
+          x="60"
+          y="74"
+          textAnchor="middle"
+          fontSize="10"
+          fontFamily="var(--font-mono)"
+          fill="var(--ink-4)"
+        >
+          on&nbsp;track
+        </text>
+      </svg>
+      <div style={{ display: "grid", gap: 4 }}>
+        <div className="kicker">Glyco insight</div>
+        <div className="hint" style={{ fontSize: 12.5, color: "var(--ink-2)", maxWidth: 220, lineHeight: 1.5 }}>
+          Ask Glyco <i>"am I on track?"</i> — every goal is available to the assistant through the{" "}
+          <span className="mono" style={{ fontSize: 11 }}>get_goals</span> tool.
+        </div>
+      </div>
     </div>
   )
 }
@@ -223,13 +337,17 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   )
 }
 
-function GoalGrid({
+function GoalSection({
+  title,
+  subtitle,
   goals,
   onEdit,
   onArchive,
   onMarkAchieved,
   onDelete,
 }: {
+  title: string
+  subtitle?: string
   goals: GoalWithProgress[]
   onEdit: (g: GoalWithProgress) => void
   onArchive?: (g: GoalWithProgress) => void
@@ -237,18 +355,25 @@ function GoalGrid({
   onDelete?: (g: GoalWithProgress) => void
 }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14 }}>
-      {goals.map((g) => (
-        <GoalCard
-          key={g.id}
-          goal={g}
-          onEdit={() => onEdit(g)}
-          onArchive={onArchive ? () => onArchive(g) : undefined}
-          onMarkAchieved={onMarkAchieved ? () => onMarkAchieved(g) : undefined}
-          onDelete={onDelete ? () => onDelete(g) : undefined}
-        />
-      ))}
-    </div>
+    <section className="goal-section">
+      <header>
+        <h2>{title}</h2>
+        {subtitle ? <span className="hint">{subtitle}</span> : null}
+        <span className="hint mono goal-section__count">{goals.length}</span>
+      </header>
+      <div className="goal-section__grid">
+        {goals.map((g) => (
+          <GoalCard
+            key={g.id}
+            goal={g}
+            onEdit={() => onEdit(g)}
+            onArchive={onArchive ? () => onArchive(g) : undefined}
+            onMarkAchieved={onMarkAchieved ? () => onMarkAchieved(g) : undefined}
+            onDelete={onDelete ? () => onDelete(g) : undefined}
+          />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -267,143 +392,166 @@ function GoalCard({
 }) {
   const progress = goal.progress
   const spec = findSpec(goal.predicate.aggregate)
-  const stateClass = progress ? stateBadgeClass(progress.state) : ""
+  const state = progress?.state ?? "ongoing"
+  const stateClass = stateBadgeClass(state)
   const accent = progress?.met
     ? "var(--st-in)"
-    : progress?.state === "behind"
+    : state === "behind"
       ? "var(--st-low)"
-      : progress?.state === "at_risk"
+      : state === "at_risk"
         ? "var(--st-vhigh)"
         : "var(--ink)"
+  const tintClass = `goal-card goal-card--${state}`
 
-  const daysAhead = progress?.trajectory?.daysAheadOfSchedule
-  const projected = progress?.trajectory?.projectedAtTarget
+  const daysAhead = progress?.trajectory?.daysAheadOfSchedule ?? null
+  const projected = progress?.trajectory?.projectedAtTarget ?? null
+  const startedToday = isStartedToday(goal.startDate)
+  const windowLabel = windowPhrase(goal, progress?.dailySeries.length ?? 0)
 
   return (
-    <div
-      className="panel"
-      style={{
-        borderColor:
-          progress?.met
-            ? "color-mix(in oklch, var(--st-in) 40%, var(--line))"
-            : progress?.state === "behind"
-              ? "color-mix(in oklch, var(--st-low) 35%, var(--line))"
-              : "var(--line)",
-      }}
-    >
-      <div style={{ padding: 16 }}>
-        <div className="row between" style={{ alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 14.5 }}>{goal.title}</div>
-            <div className="hint mt-4 mono" style={{ fontSize: 11.5 }}>
-              {summarisePredicate(goal.predicate)}
-            </div>
-          </div>
-          {progress ? (
-            <span className={"badge " + stateClass} style={{ whiteSpace: "nowrap" }}>
-              {labelForState(progress.state)}
-            </span>
-          ) : null}
+    <article className={tintClass}>
+      <header className="goal-card__head">
+        <div>
+          <h3 className="goal-card__title">{goal.title}</h3>
+          <p className="goal-card__rule">{summarisePredicate(goal.predicate)}</p>
         </div>
+        {progress ? (
+          <span className={"badge " + stateClass} style={{ whiteSpace: "nowrap" }}>
+            {labelForState(state)}
+          </span>
+        ) : null}
+      </header>
 
-        <div className="row mt-8" style={{ alignItems: "baseline", gap: 12 }}>
-          <div className="num-xl mono" style={{ fontSize: 30, color: accent, lineHeight: 1 }}>
-            {progress ? formatValue(progress.currentValue, progress.unit) : "—"}
-          </div>
-          <div className="hint mono">
-            target {progress ? formatValue(progress.targetValue, progress.unit) : "—"}
-          </div>
-          {progress?.met ? (
-            <span className="badge badge--in" style={{ marginLeft: "auto" }}>
-              <Icons.Check size={11} /> meeting target
-            </span>
-          ) : null}
+      <div className="goal-card__kpi">
+        <div className="goal-card__value mono" style={{ color: accent }}>
+          {progress ? formatValue(progress.currentValue, progress.unit) : "—"}
         </div>
-
-        {progress && progress.dailySeries.length > 0 ? (
-          <div style={{ marginTop: 12, marginLeft: -6, marginRight: -6 }}>
-            <GoalChart
-              progress={progress}
-              targetDate={goal.targetDate || undefined}
-              goodDirection={spec.goodDirection}
-              height={130}
-            />
-          </div>
-        ) : (
-          <div className="hint mt-8">No data yet in the evaluation window.</div>
-        )}
-
-        {progress?.perUnit ? (
-          <div className="mt-8" style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            <span className="hint">Per {progress.perUnit.kind}:</span>
-            {progress.perUnit.buckets.slice(-8).map((b, i) => (
-              <span
-                key={i}
-                title={`${b.label} · ${formatValue(b.value, progress.unit)}`}
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: 3,
-                  background: b.met ? "var(--st-in)" : "var(--st-vhigh)",
-                  opacity: 0.85,
-                }}
-              />
-            ))}
-            <span className="hint mono" style={{ marginLeft: "auto" }}>
-              {progress.perUnit.metCount}/{progress.perUnit.totalCount}
-            </span>
-          </div>
-        ) : null}
-
-        {progress?.narrative ? (
-          <div className="hint mt-8" style={{ color: "var(--ink-2)" }}>
-            {progress.narrative}
-          </div>
-        ) : null}
-        {progress?.nudge ? (
-          <div className="hint mt-4" style={{ color: "var(--accent-2)" }}>
-            {progress.nudge}
-          </div>
-        ) : null}
-
-        <div className="row mt-8 hint mono" style={{ fontSize: 11 }}>
-          <span>Start {goal.startDate}</span>
-          {goal.targetDate ? <span>&nbsp;· Target {goal.targetDate}</span> : <span>&nbsp;· Ongoing</span>}
-          {daysAhead !== undefined && daysAhead !== null ? (
-            <span style={{ marginLeft: "auto", color: daysAhead >= 0 ? "var(--st-in)" : "var(--ink-3)" }}>
-              {daysAhead >= 0 ? `${daysAhead.toFixed(0)} d ahead` : `${Math.abs(daysAhead).toFixed(0)} d behind`}
-            </span>
-          ) : projected !== undefined && projected !== null ? (
-            <span style={{ marginLeft: "auto" }}>proj {formatValue(projected, progress?.unit ?? "")}</span>
-          ) : null}
+        <div className="goal-card__vs hint mono">
+          target {progress ? formatValue(progress.targetValue, progress.unit) : "—"}
         </div>
+        {progress?.met ? (
+          <span className="badge badge--in goal-card__metpill">
+            <Icons.Check size={11} /> meeting target
+          </span>
+        ) : null}
+      </div>
 
-        <div className="row mt-16" style={{ gap: 6, flexWrap: "wrap" }}>
-          <button className="pill-btn" onClick={onEdit} type="button">
-            Edit
+      {progress && progress.dailySeries.length > 0 ? (
+        <div className="goal-card__chart">
+          <GoalChart
+            progress={progress}
+            targetDate={goal.targetDate || undefined}
+            goodDirection={spec.goodDirection}
+            height={160}
+            compact
+          />
+        </div>
+      ) : (
+        <div className="goal-card__empty hint">
+          {startedToday
+            ? "Just started — readings will populate this chart as they come in."
+            : "No data yet in the evaluation window."}
+        </div>
+      )}
+
+      {progress?.perUnit ? <PerUnitRow progress={progress} /> : null}
+
+      {progress?.narrative ? (
+        <p className="goal-card__narrative">{progress.narrative}</p>
+      ) : null}
+      {progress?.nudge ? <p className="goal-card__nudge">{progress.nudge}</p> : null}
+
+      <footer className="goal-card__meta">
+        <span className="mono">{windowLabel}</span>
+        <span className="mono">
+          {goal.targetDate ? `target ${goal.targetDate}` : "ongoing"}
+        </span>
+        {daysAhead !== null && daysAhead !== undefined ? (
+          <span
+            className="mono"
+            style={{
+              marginLeft: "auto",
+              color: daysAhead >= 0 ? "var(--st-in)" : "var(--ink-3)",
+            }}
+          >
+            {daysAhead >= 0
+              ? `${daysAhead.toFixed(0)} d ahead`
+              : `${Math.abs(daysAhead).toFixed(0)} d behind`}
+          </span>
+        ) : projected !== null && projected !== undefined ? (
+          <span className="mono" style={{ marginLeft: "auto" }}>
+            proj {formatValue(projected, progress?.unit ?? "")}
+          </span>
+        ) : null}
+      </footer>
+
+      <div className="goal-card__actions">
+        <button className="pill-btn" onClick={onEdit} type="button">
+          Edit
+        </button>
+        {onMarkAchieved ? (
+          <button className="pill-btn" onClick={onMarkAchieved} type="button">
+            <Icons.Check size={12} /> Mark achieved
           </button>
-          {onMarkAchieved ? (
-            <button className="pill-btn" onClick={onMarkAchieved} type="button">
-              <Icons.Check size={12} /> Mark achieved
-            </button>
-          ) : null}
-          {onArchive ? (
-            <button className="pill-btn" onClick={onArchive} type="button">
-              Archive
-            </button>
-          ) : null}
-          {onDelete ? (
-            <button
-              className="pill-btn"
-              onClick={onDelete}
-              type="button"
-              style={{ marginLeft: "auto", color: "var(--st-low)" }}
-            >
-              Delete
-            </button>
-          ) : null}
-        </div>
+        ) : null}
+        {onArchive ? (
+          <button className="pill-btn" onClick={onArchive} type="button">
+            Archive
+          </button>
+        ) : null}
+        {onDelete ? (
+          <button
+            className="pill-btn goal-card__danger"
+            onClick={onDelete}
+            type="button"
+            title="Delete goal"
+          >
+            Delete
+          </button>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+function PerUnitRow({ progress }: { progress: NonNullable<GoalWithProgress["progress"]> }) {
+  const per = progress.perUnit
+  if (!per) return null
+  return (
+    <div className="goal-card__perunit">
+      <div className="hint mono" style={{ fontSize: 10.5 }}>
+        per {per.kind}
+      </div>
+      <div className="goal-card__perunit-row">
+        {per.buckets.slice(-12).map((b, i) => (
+          <span
+            key={i}
+            title={`${b.label} · ${formatValue(b.value, progress.unit)}`}
+            className="goal-card__perunit-cell"
+            style={{
+              background: b.met ? "var(--st-in)" : "var(--st-vhigh)",
+            }}
+          />
+        ))}
+      </div>
+      <div className="hint mono" style={{ fontSize: 10.5 }}>
+        {per.metCount}/{per.totalCount}
       </div>
     </div>
   )
+}
+
+function isStartedToday(startDate: string): boolean {
+  if (!startDate) return false
+  const d = new Date()
+  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  return iso === startDate
+}
+
+function windowPhrase(goal: GoalWithProgress, seriesLen: number): string {
+  const declared = goal.predicate.window.days
+  if (seriesLen > 0 && seriesLen < declared) {
+    return `since ${goal.startDate} · ${seriesLen} d`
+  }
+  return `last ${declared} d`
 }
