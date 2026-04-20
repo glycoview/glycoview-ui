@@ -15,6 +15,7 @@ import {
   syncDynamicDNS,
 } from "@/lib/api"
 import type { ApiError } from "@/lib/api"
+import { AiSettingsForm } from "@/components/ai/settings-form"
 import { Icons } from "@/lib/design-icons"
 import { COMMON_TIMEZONES, browserTimeZone } from "@/lib/time"
 import type {
@@ -395,6 +396,20 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel__head">
+          <div className="flex-1">
+            <div className="gv-h3">Glyco · AI assistant</div>
+            <div className="hint mt-4">
+              Connect an Ollama Cloud API key or point Glyco at a local Ollama
+              server. Admin-only — the key is shared with every dashboard user
+              who opens Glyco.
+            </div>
+          </div>
+        </div>
+        <AiSettingsForm />
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>

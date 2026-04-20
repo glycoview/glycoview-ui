@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Composer } from "@/components/ai/composer"
 import { MarkdownView } from "@/components/ai/markdown-view"
-import { AiSettingsDialog } from "@/components/ai/settings-dialog"
 import { ToolTrace, type ToolTraceEntry } from "@/components/ai/tool-trace"
 import type { AiChatMessage, AiStreamEvent } from "@/lib/ai-stream"
 import { streamAiChat } from "@/lib/ai-stream"
@@ -25,16 +24,15 @@ function newId(): string {
 
 type Props = { user: AppUser }
 
-export function AiChatPage({ user }: Props) {
+export function AiChatPage({ user: _user }: Props) {
   const [turns, setTurns] = useState<Turn[]>([])
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
   }, [turns])
 
   const send = async () => {
@@ -123,54 +121,23 @@ export function AiChatPage({ user }: Props) {
     )
   }
 
-  const clear = () => {
-    setTurns([])
-  }
-
-  const isAdmin = user.role === "admin"
   const hasMessages = turns.length > 0
 
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateRows: "1fr auto",
-        height: "calc(100vh - 96px)",
-        maxWidth: 860,
+        maxWidth: 820,
         margin: "0 auto",
         width: "100%",
-        minHeight: 0,
+        paddingBottom: 4,
       }}
     >
-      <div
-        ref={scrollRef}
-        style={{
-          overflowY: "auto",
-          paddingTop: 8,
-          paddingBottom: 16,
-          minHeight: 0,
-        }}
-      >
-        <ChatHeader
-          onSettings={isAdmin ? () => setSettingsOpen(true) : undefined}
-          onClear={hasMessages ? clear : undefined}
-        />
-        {!hasMessages ? <EmptyState /> : null}
-        {turns.map((turn) => (
-          <TurnView key={turn.id} turn={turn} />
-        ))}
-      </div>
-
-      <Composer
-        value={input}
-        onChange={setInput}
-        onSubmit={send}
-        onStop={stop}
-        busy={busy}
-        disabled={false}
-      />
-
-      <AiSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {!hasMessages ? <EmptyState /> : null}
+      {turns.map((turn) => (
+        <TurnView key={turn.id} turn={turn} />
+      ))}
+      <div ref={bottomRef} />
+      <Composer value={input} onChange={setInput} onSubmit={send} onStop={stop} busy={busy} />
     </div>
   )
 }
@@ -181,56 +148,10 @@ function turnsToMessages(turns: Turn[]): AiChatMessage[] {
     if (turn.role === "user") {
       out.push({ role: "user", content: turn.content })
     } else if (turn.role === "assistant") {
-      // We only replay the text content in history; the server re-runs the
-      // tool loop itself if the assistant wants more tools next turn.
       out.push({ role: "assistant", content: turn.content })
     }
   }
   return out
-}
-
-function ChatHeader({
-  onSettings,
-  onClear,
-}: {
-  onSettings?: () => void
-  onClear?: () => void
-}) {
-  return (
-    <div
-      className="row between"
-      style={{
-        padding: "2px 4px 12px",
-        position: "sticky",
-        top: 0,
-        background: "var(--bg)",
-        zIndex: 5,
-      }}
-    >
-      <div>
-        <div className="gv-h2">Clinical assistant</div>
-        <div className="hint mt-4">
-          Reads your CGM, treatments and loop status via tools. Streaming.
-        </div>
-      </div>
-      <div className="row" style={{ gap: 6 }}>
-        {onClear ? (
-          <button className="pill-btn" onClick={onClear} style={{ height: 28, fontSize: 11.5 }}>
-            Clear
-          </button>
-        ) : null}
-        {onSettings ? (
-          <button
-            className="pill-btn"
-            onClick={onSettings}
-            style={{ height: 28, fontSize: 11.5 }}
-          >
-            Settings
-          </button>
-        ) : null}
-      </div>
-    </div>
-  )
 }
 
 function EmptyState() {
@@ -238,25 +159,24 @@ function EmptyState() {
     () => [
       "How is today going so far?",
       "What happened around lunchtime today?",
-      "Are there any patterns in nocturnal lows this week?",
-      "Compare this week's TIR to last week's and explain the difference.",
+      "Are there any recurring nocturnal lows this week?",
+      "Compare this week's TIR to last week's.",
       "My post-pasta spike hit 254 — is my I:C ratio right?",
     ],
     [],
   )
   return (
-    <div style={{ padding: "40px 4px", display: "grid", gap: 20 }}>
+    <div style={{ padding: "56px 4px 24px", display: "grid", gap: 20 }}>
       <div style={{ textAlign: "center" }}>
-        <div className="gv-h1" style={{ fontSize: 22 }}>
-          What should we look at?
+        <div className="gv-h1" style={{ fontSize: 24 }}>
+          Hi, I'm Glyco.
         </div>
-        <div className="hint mt-8" style={{ maxWidth: 520, margin: "0 auto" }}>
-          The assistant has read-only access to your glucose, treatments and
-          loop status. It will call tools to fetch the numbers before
-          answering — you'll see each tool call inline.
+        <div className="hint mt-8" style={{ maxWidth: 560, margin: "0 auto" }}>
+          I read your glucose, treatments and loop status through tools — then
+          tell you what I see. Ask me anything about your data.
         </div>
       </div>
-      <div style={{ display: "grid", gap: 8, maxWidth: 520, margin: "0 auto", width: "100%" }}>
+      <div style={{ display: "grid", gap: 8, maxWidth: 560, margin: "0 auto", width: "100%" }}>
         {prompts.map((p) => (
           <div
             key={p}
@@ -284,7 +204,7 @@ function TurnView({ turn }: { turn: Turn }) {
         style={{
           display: "flex",
           justifyContent: "flex-end",
-          padding: "8px 0",
+          padding: "10px 0",
         }}
       >
         <div
@@ -305,7 +225,7 @@ function TurnView({ turn }: { turn: Turn }) {
     )
   }
   return (
-    <div style={{ padding: "8px 0" }}>
+    <div style={{ padding: "10px 0" }}>
       <div
         style={{
           display: "grid",
@@ -325,16 +245,13 @@ function TurnView({ turn }: { turn: Turn }) {
             fontSize: 12,
             fontWeight: 600,
           }}
+          title="Glyco"
         >
           G
         </div>
         <div style={{ minWidth: 0 }}>
           {turn.tools.length > 0 ? (
-            <div style={{ marginBottom: 6 }}>
-              {turn.tools.map((t) => (
-                <ToolTrace key={t.id} entry={t} />
-              ))}
-            </div>
+            <ToolTraces entries={turn.tools} />
           ) : null}
           {turn.content ? <MarkdownView text={turn.content} /> : null}
           {turn.streaming && !turn.content ? (
@@ -373,6 +290,66 @@ function TurnView({ turn }: { turn: Turn }) {
           ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Stacked tool-call group — defaults to a single pending/success summary line
+ * that you can expand to see each call. Compact so the conversation stays
+ * the primary read.
+ */
+function ToolTraces({ entries }: { entries: ToolTraceEntry[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const anyPending = entries.some((t) => t.pending)
+  const errorCount = entries.filter((t) => t.error).length
+  const label = anyPending
+    ? `Consulting ${entries.length === 1 ? entries[0].name : `${entries.length} tools…`}`
+    : errorCount > 0
+      ? `${entries.length} calls · ${errorCount} error${errorCount > 1 ? "s" : ""}`
+      : `Consulted ${entries.length} data tool${entries.length > 1 ? "s" : ""}`
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="hint mono"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "2px 6px",
+          margin: "0 0 4px -6px",
+          borderRadius: 6,
+          fontSize: 11,
+          color: "var(--ink-4)",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: anyPending
+              ? "var(--ink-4)"
+              : errorCount > 0
+                ? "var(--st-low)"
+                : "var(--st-in)",
+            animation: anyPending ? "gvFade 900ms ease-in-out infinite" : undefined,
+          }}
+        />
+        {label}
+        <span style={{ color: "var(--ink-4)" }}>{expanded ? "· hide" : "· details"}</span>
+      </button>
+      {expanded ? (
+        <div>
+          {entries.map((t) => (
+            <ToolTrace key={t.id} entry={t} />
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
