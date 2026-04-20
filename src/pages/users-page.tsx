@@ -167,7 +167,8 @@ export function UsersPage() {
             No users yet. Create one above.
           </div>
         ) : (
-          <table className="tbl">
+          <div className="table-scroll">
+          <table className="tbl" style={{ minWidth: 620 }}>
             <thead>
               <tr>
                 <th>User</th>
@@ -225,6 +226,7 @@ export function UsersPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

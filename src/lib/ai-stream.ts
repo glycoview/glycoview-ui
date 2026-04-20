@@ -32,13 +32,14 @@ export type StreamHandlers = {
 
 export async function streamAiChat(
   messages: AiChatMessage[],
+  userTimeZone: string | undefined,
   handlers: StreamHandlers,
 ): Promise<void> {
   const res = await fetch("/app/api/ai/chat", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, userTimeZone }),
     signal: handlers.signal,
   })
   if (!res.ok) {

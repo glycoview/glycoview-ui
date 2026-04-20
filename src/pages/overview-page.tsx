@@ -82,7 +82,8 @@ export function OverviewPage({ token }: { token: string }) {
             <div
               className="num-xl mono mt-8"
               style={{
-                fontSize: 78,
+                // Fluid hero: readable on 320px phones, still massive on desktop.
+                fontSize: "clamp(48px, 11vw, 78px)",
                 lineHeight: 1,
                 color: accentColor(current.accent) || `var(--st-${currentClass})`,
               }}

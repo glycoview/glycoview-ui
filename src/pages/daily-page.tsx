@@ -67,7 +67,7 @@ export function DailyPage({ token }: { token: string }) {
             </div>
             <div
               className="num-xl mono mt-8"
-              style={{ fontSize: 54, lineHeight: 1, letterSpacing: "-0.03em" }}
+              style={{ fontSize: "clamp(40px, 8vw, 54px)", lineHeight: 1, letterSpacing: "-0.03em" }}
             >
               {tir ? tir.percent.toFixed(1) : "—"}
               <span style={{ color: "var(--ink-4)", fontSize: 22, marginLeft: 4 }}>%</span>

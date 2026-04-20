@@ -314,7 +314,7 @@ export function SettingsPage() {
             <div className="hint mt-4">Units, theme and chart density. Stored per device.</div>
           </div>
         </div>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
           <div>
             <div className="label">Glucose units</div>
             <div className="seg">
@@ -431,7 +431,7 @@ export function SettingsPage() {
             </span>
           ) : null}
         </div>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
           <KV k="App tag" v={currentTag} />
           <KV k="Agent tag" v={status?.currentAgentTag || "—"} />
           <KV k="Stack" v={status?.stackName || "—"} />

@@ -47,7 +47,8 @@ export function DevicesPage({ token }: { token: string }) {
             No device feeds reported yet.
           </div>
         ) : (
-          <table className="tbl">
+          <div className="table-scroll">
+          <table className="tbl" style={{ minWidth: 640 }}>
             <thead>
               <tr>
                 <th>Device</th>
@@ -96,6 +97,7 @@ export function DevicesPage({ token }: { token: string }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

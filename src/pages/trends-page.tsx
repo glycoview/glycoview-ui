@@ -60,7 +60,7 @@ export function TrendsPage({ token }: { token: string }) {
             </div>
             <div
               className="num-xl mono mt-8"
-              style={{ fontSize: 54, lineHeight: 1, letterSpacing: "-0.03em" }}
+              style={{ fontSize: "clamp(40px, 8vw, 54px)", lineHeight: 1, letterSpacing: "-0.03em" }}
             >
               {numericPart(avg) || "—"}
               <span style={{ color: "var(--ink-4)", fontSize: 22, marginLeft: 4 }}>
@@ -225,7 +225,8 @@ export function TrendsPage({ token }: { token: string }) {
                 No daily summaries available.
               </div>
             ) : (
-              <table className="tbl">
+              <div className="table-scroll">
+              <table className="tbl" style={{ minWidth: 640 }}>
                 <thead>
                   <tr>
                     <th>Day</th>
@@ -296,6 +297,7 @@ export function TrendsPage({ token }: { token: string }) {
                     })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

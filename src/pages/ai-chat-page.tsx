@@ -5,6 +5,7 @@ import { MarkdownView } from "@/components/ai/markdown-view"
 import { ToolTrace, type ToolTraceEntry } from "@/components/ai/tool-trace"
 import type { AiChatMessage, AiStreamEvent } from "@/lib/ai-stream"
 import { streamAiChat } from "@/lib/ai-stream"
+import { userTimeZone } from "@/lib/time"
 import type { AppUser } from "@/types"
 
 type Turn =
@@ -55,7 +56,7 @@ export function AiChatPage({ user: _user }: Props) {
     abortRef.current = controller
 
     try {
-      await streamAiChat(history, {
+      await streamAiChat(history, userTimeZone(), {
         signal: controller.signal,
         onEvent: (ev) => applyEvent(assistantTurn.id, ev),
       })

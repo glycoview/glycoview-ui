@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 
 import { BrandMark, Icons } from "@/lib/design-icons"
@@ -49,9 +49,38 @@ export function AppShell({ user, appVersion, onLogout }: AppShellProps) {
   const userInitials = initials(user.displayName || user.username)
   const hostname = typeof window !== "undefined" ? window.location.hostname : ""
   const versionLabel = appVersion ? `Appliance · ${appVersion}` : "Appliance"
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Close the mobile drawer whenever the user navigates or the viewport
+  // widens past the tablet breakpoint.
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const mq = window.matchMedia("(min-width: 901px)")
+    const close = () => setMobileOpen(false)
+    mq.addEventListener("change", close)
+    return () => mq.removeEventListener("change", close)
+  }, [])
+
+  // Lock background scroll while the drawer is open.
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const original = document.body.style.overflow
+    document.body.style.overflow = mobileOpen ? "hidden" : original
+    return () => {
+      document.body.style.overflow = original
+    }
+  }, [mobileOpen])
 
   return (
-    <div className="gv-app">
+    <div className="gv-app" data-mobile-open={mobileOpen ? "true" : "false"}>
+      <div
+        className="side__scrim"
+        aria-hidden={!mobileOpen}
+        onClick={() => setMobileOpen(false)}
+      />
       <aside className="side">
         <div className="side__brand">
           <div className="brand__mark" aria-hidden="true">
@@ -112,6 +141,14 @@ export function AppShell({ user, appVersion, onLogout }: AppShellProps) {
 
       <div className="main-col">
         <header className="top">
+          <button
+            type="button"
+            className="mobile-toggle"
+            aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+            onClick={() => setMobileOpen((v) => !v)}
+          >
+            <HamburgerIcon open={mobileOpen} />
+          </button>
           <div className="crumbs">
             <span>Glycoview</span>
             <span className="crumbs__sep">/</span>
@@ -124,6 +161,24 @@ export function AppShell({ user, appVersion, onLogout }: AppShellProps) {
         </main>
       </div>
     </div>
+  )
+}
+
+function HamburgerIcon({ open }: { open: boolean }) {
+  if (open) {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="6" y1="6" x2="18" y2="18" />
+        <line x1="18" y1="6" x2="6" y2="18" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <line x1="4" y1="7" x2="20" y2="7" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="17" x2="20" y2="17" />
+    </svg>
   )
 }
 
