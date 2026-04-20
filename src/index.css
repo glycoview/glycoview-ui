@@ -766,3 +766,115 @@ a:focus-visible,
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
+
+/* ─────────────────────────────────────────────
+   Goals · rule builder + preset tiles
+   ───────────────────────────────────────────── */
+.rb {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in oklch, var(--bg-2) 60%, var(--surface));
+}
+.rb__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+}
+.rb__label {
+  color: var(--ink-3);
+  font-size: 12.5px;
+  min-width: 110px;
+}
+.rb__sep {
+  color: var(--ink-4);
+  font-size: 12px;
+  padding: 0 2px;
+}
+.rb__select {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  font-size: 13px;
+  min-width: 0;
+  flex: 1 1 180px;
+  max-width: 320px;
+}
+.rb__select--sm { flex: 0 0 auto; min-width: 120px; }
+.rb__select:focus-visible {
+  border-color: var(--accent-2);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus);
+}
+.rb__num {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 4px 6px 4px 8px;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+.rb__num input {
+  width: 72px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 0;
+}
+.rb__num input::-webkit-outer-spin-button,
+.rb__num input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.rb__num input[type="number"] { -moz-appearance: textfield; }
+.rb__num span {
+  font-size: 11px;
+  color: var(--ink-4);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.rb__help {
+  font-size: 11.5px;
+  color: var(--ink-4);
+  margin: 4px 0 0;
+}
+
+.goal-preset {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+.goal-preset b {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.goal-preset:hover {
+  border-color: var(--accent-2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px oklch(0 0 0 / 6%);
+}
+.goal-preset:focus-visible {
+  outline: none;
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+@media (max-width: 640px) {
+  .rb__label { min-width: 100%; }
+  .rb__select { max-width: 100%; flex: 1 1 100%; }
+}

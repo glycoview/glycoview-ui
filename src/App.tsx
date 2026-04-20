@@ -14,6 +14,7 @@ import { SetupPage } from "@/pages/setup-page"
 import { UsersPage } from "@/pages/users-page"
 import { SettingsPage } from "@/pages/settings-page"
 import { AiChatPage } from "@/pages/ai-chat-page"
+import { GoalsPage } from "@/pages/goals-page"
 
 function App() {
   const [token] = useState(() => readStoredToken())
@@ -67,6 +68,7 @@ function App() {
         <Route path="/trends" element={<TrendsPage token={token} />} />
         <Route path="/profile" element={<ProfilePage token={token} />} />
         <Route path="/devices" element={<DevicesPage token={token} />} />
+        <Route path="/goals" element={<GoalsPage />} />
         <Route path="/ai" element={<AiChatPage user={authStatus.user} />} />
         {authStatus.user.role === "admin" ? <Route path="/users" element={<UsersPage />} /> : null}
         {authStatus.user.role === "admin" ? <Route path="/settings" element={<SettingsPage />} /> : null}

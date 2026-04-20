@@ -21,20 +21,22 @@ const dashboardItems: NavItemSpec[] = [
   { to: "/", label: "Overview", icon: Icons.Activity, kbd: "1" },
   { to: "/daily", label: "Daily", icon: Icons.Calendar, kbd: "2" },
   { to: "/trends", label: "Trends", icon: Icons.Trend, kbd: "3" },
-  { to: "/profile", label: "Profile", icon: Icons.User, kbd: "4" },
-  { to: "/devices", label: "Devices", icon: Icons.Device, kbd: "5" },
-  { to: "/ai", label: "Glyco", icon: Icons.Sparkles, kbd: "6" },
+  { to: "/goals", label: "Goals", icon: Icons.Check, kbd: "4" },
+  { to: "/profile", label: "Profile", icon: Icons.User, kbd: "5" },
+  { to: "/devices", label: "Devices", icon: Icons.Device, kbd: "6" },
+  { to: "/ai", label: "Glyco", icon: Icons.Sparkles, kbd: "7" },
 ]
 
 const adminItems: NavItemSpec[] = [
-  { to: "/users", label: "Access", icon: Icons.Shield, kbd: "7" },
-  { to: "/settings", label: "Settings", icon: Icons.Settings, kbd: "8" },
+  { to: "/users", label: "Access", icon: Icons.Shield, kbd: "8" },
+  { to: "/settings", label: "Settings", icon: Icons.Settings, kbd: "9" },
 ]
 
 const titleMap: Record<string, string> = {
   "/": "Overview",
   "/daily": "Daily",
   "/trends": "Trends",
+  "/goals": "Goals",
   "/profile": "Profile",
   "/devices": "Devices",
   "/ai": "Glyco",
