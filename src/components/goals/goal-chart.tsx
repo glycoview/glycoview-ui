@@ -117,7 +117,7 @@ export function GoalChart({ progress, targetDate, goodDirection, height = 180, c
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
           data={data}
-          margin={{ top: 10, right: compact ? 8 : 20, left: compact ? -10 : 0, bottom: compact ? 0 : 6 }}
+          margin={{ top: 10, right: compact ? 12 : 20, left: 0, bottom: compact ? 0 : 6 }}
         >
           <defs>
             <linearGradient id="goalFill" x1="0" y1="0" x2="0" y2="1">

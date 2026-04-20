@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts"
 
+import { PanelHead } from "@/components/dashboard/primitives"
 import { GoalChart } from "@/components/goals/goal-chart"
 import {
   GoalEditor,
@@ -47,8 +48,6 @@ export function GoalsPage() {
     return { total: list.length, onTrack, smashing, atRisk, behind }
   }, [active])
 
-  const mood = moodFromStats(stats)
-
   if (loading) {
     return (
       <div className="panel" style={{ padding: 24 }}>
@@ -76,47 +75,58 @@ export function GoalsPage() {
 
   return (
     <>
-      <div className="goals-hero">
-        <div
-          className="panel goals-hero__main"
-          style={{
-            background: mood.bgGradient,
-            borderColor: mood.borderColor,
-          }}
-        >
-          <div className="goals-hero__meta">
-            <div className="kicker" style={{ color: mood.mutedInk }}>
-              Your goals
+      <div className="gv-grid gv-grid-hero" style={{ marginBottom: 16 }}>
+        <div className="panel">
+          <div style={{ padding: 20 }}>
+            <div className="row between" style={{ alignItems: "baseline" }}>
+              <div className="kicker">Your goals</div>
+              <button className="pill-btn is-primary" type="button" onClick={() => setEditing("new")}>
+                <Icons.Plus size={13} /> New goal
+              </button>
             </div>
-            <div className="goals-hero__count">
-              <span className="num-xl mono">{stats?.total ?? 0}</span>
+            <div className="row mt-8" style={{ alignItems: "baseline", gap: 12 }}>
+              <div
+                className="num-xl mono"
+                style={{ fontSize: "clamp(44px, 8vw, 62px)", lineHeight: 1, letterSpacing: "-0.02em" }}
+              >
+                {stats?.total ?? 0}
+              </div>
               <span className="hint mono">active</span>
             </div>
-            <div className="goals-hero__headline" style={{ color: mood.ink }}>
-              {mood.headline}
+            <div className="hint mt-8" style={{ fontSize: 13, color: "var(--ink-2)" }}>
+              {stats ? summariseStats(stats) : "No active goals yet — pick a preset to get started."}
             </div>
-            <div className="goals-hero__sub" style={{ color: mood.mutedInk }}>
-              {stats
-                ? summariseStats(stats)
-                : "Start from a preset — TIR, hypo safety, GMI and more. Your progress evaluates live against your CGM data."}
+            <div
+              className="row mt-16"
+              style={{
+                gap: 10,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+                alignItems: "center",
+              }}
+            >
+              <label
+                className="hint"
+                style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={includeArchived}
+                  onChange={(e) => setIncludeArchived(e.target.checked)}
+                />
+                Show archived
+              </label>
+              <span className="hint mono" style={{ marginLeft: "auto" }}>
+                {active.length} active · {achieved.length} achieved · {paused.length} paused
+              </span>
             </div>
-          </div>
-          <div className="goals-hero__cta">
-            <button className="pill-btn is-primary" type="button" onClick={() => setEditing("new")}>
-              <Icons.Plus size={13} /> New goal
-            </button>
-            <label className="goals-archive-toggle">
-              <input
-                type="checkbox"
-                checked={includeArchived}
-                onChange={(e) => setIncludeArchived(e.target.checked)}
-              />
-              <span>Show archived</span>
-            </label>
           </div>
         </div>
-        <div className="panel goals-hero__ring">
-          <MoodRing stats={stats} />
+        <div className="panel">
+          <PanelHead title="Glyco insight" sub="Every goal is available to the assistant" />
+          <div className="panel__body">
+            <MoodRing stats={stats} />
+          </div>
         </div>
       </div>
 
@@ -133,6 +143,7 @@ export function GoalsPage() {
       {active.length > 0 ? (
         <GoalSection
           title="Active"
+          sub="Evaluated live against your CGM data"
           goals={active}
           onEdit={(g) => setEditing(g)}
           onArchive={async (g) => {
@@ -158,7 +169,7 @@ export function GoalsPage() {
       {achieved.length > 0 ? (
         <GoalSection
           title="Achieved"
-          subtitle="Celebrate the wins"
+          sub="Celebrate the wins"
           goals={achieved}
           onEdit={(g) => setEditing(g)}
           onDelete={mkDelete}
@@ -187,71 +198,13 @@ export function GoalsPage() {
   )
 }
 
-type Mood = {
-  headline: string
-  ink: string
-  mutedInk: string
-  bgGradient: string
-  borderColor: string
-}
-
-function moodFromStats(stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number } | null): Mood {
-  if (!stats || stats.total === 0) {
-    return {
-      headline: "No goals yet — let's set one",
-      ink: "var(--ink)",
-      mutedInk: "var(--ink-3)",
-      bgGradient: "var(--surface)",
-      borderColor: "var(--line)",
-    }
-  }
-  if (stats.behind > 0) {
-    return {
-      headline: "Some goals need attention",
-      ink: "var(--ink)",
-      mutedInk: "var(--ink-3)",
-      bgGradient:
-        "linear-gradient(135deg, color-mix(in oklch, var(--st-low) 9%, var(--surface)), var(--surface))",
-      borderColor: "color-mix(in oklch, var(--st-low) 35%, var(--line))",
-    }
-  }
-  if (stats.atRisk > 0) {
-    return {
-      headline: "A nudge away from on track",
-      ink: "var(--ink)",
-      mutedInk: "var(--ink-3)",
-      bgGradient:
-        "linear-gradient(135deg, color-mix(in oklch, var(--st-vhigh) 9%, var(--surface)), var(--surface))",
-      borderColor: "color-mix(in oklch, var(--st-vhigh) 30%, var(--line))",
-    }
-  }
-  if (stats.smashing > 0) {
-    return {
-      headline: "You're crushing it",
-      ink: "var(--ink)",
-      mutedInk: "var(--ink-3)",
-      bgGradient:
-        "linear-gradient(135deg, color-mix(in oklch, var(--st-in) 14%, var(--surface)), var(--surface))",
-      borderColor: "color-mix(in oklch, var(--st-in) 40%, var(--line))",
-    }
-  }
-  return {
-    headline: "All goals on track",
-    ink: "var(--ink)",
-    mutedInk: "var(--ink-3)",
-    bgGradient:
-      "linear-gradient(135deg, color-mix(in oklch, var(--st-in) 10%, var(--surface)), var(--surface))",
-    borderColor: "color-mix(in oklch, var(--st-in) 30%, var(--line))",
-  }
-}
-
 function summariseStats(stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number }) {
   const parts: string[] = []
   if (stats.smashing) parts.push(`${stats.smashing} crushing`)
   if (stats.onTrack) parts.push(`${stats.onTrack} on track`)
   if (stats.atRisk) parts.push(`${stats.atRisk} at risk`)
   if (stats.behind) parts.push(`${stats.behind} behind`)
-  return parts.join(" · ") || "Waiting for enough data to score."
+  return parts.join(" · ") || "Waiting for enough data."
 }
 
 function MoodRing({ stats }: { stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number } | null }) {
@@ -274,14 +227,14 @@ function MoodRing({ stats }: { stats: { total: number; smashing: number; onTrack
   }
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-      <div style={{ position: "relative", width: 128, height: 128 }}>
+      <div style={{ position: "relative", width: 116, height: 116, flex: "0 0 116px" }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data}
               dataKey="value"
-              innerRadius={42}
-              outerRadius={60}
+              innerRadius={40}
+              outerRadius={56}
               startAngle={90}
               endAngle={-270}
               stroke="none"
@@ -305,21 +258,18 @@ function MoodRing({ stats }: { stats: { total: number; smashing: number; onTrack
           }}
         >
           <div>
-            <div className="mono" style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.02em" }}>
+            <div className="mono num-xl" style={{ fontSize: 22, lineHeight: 1 }}>
               {pct}%
             </div>
-            <div className="hint mono" style={{ fontSize: 10 }}>
+            <div className="hint mono" style={{ fontSize: 10, marginTop: 2 }}>
               on&nbsp;track
             </div>
           </div>
         </div>
       </div>
-      <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
-        <div className="kicker">Glyco insight</div>
-        <div className="hint" style={{ fontSize: 12.5, color: "var(--ink-2)", maxWidth: 220, lineHeight: 1.5 }}>
-          Ask Glyco <i>"am I on track?"</i> — every goal is available to the assistant through the{" "}
-          <span className="mono" style={{ fontSize: 11 }}>get_goals</span> tool.
-        </div>
+      <div className="hint" style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.55 }}>
+        Ask Glyco <i>"am I on track?"</i> — every goal is available to the assistant through the{" "}
+        <span className="mono" style={{ fontSize: 11 }}>get_goals</span> tool.
       </div>
     </div>
   )
@@ -347,7 +297,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 function GoalSection({
   title,
-  subtitle,
+  sub,
   goals,
   onEdit,
   onArchive,
@@ -355,7 +305,7 @@ function GoalSection({
   onDelete,
 }: {
   title: string
-  subtitle?: string
+  sub?: string
   goals: GoalWithProgress[]
   onEdit: (g: GoalWithProgress) => void
   onArchive?: (g: GoalWithProgress) => void
@@ -363,13 +313,16 @@ function GoalSection({
   onDelete?: (g: GoalWithProgress) => void
 }) {
   return (
-    <section className="goal-section">
-      <header>
-        <h2>{title}</h2>
-        {subtitle ? <span className="hint">{subtitle}</span> : null}
-        <span className="hint mono goal-section__count">{goals.length}</span>
-      </header>
-      <div className="goal-section__grid">
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <PanelHead title={title} sub={sub} right={<span className="hint mono">{goals.length}</span>} />
+      <div
+        style={{
+          padding: 16,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+          gap: 14,
+        }}
+      >
         {goals.map((g) => (
           <GoalCard
             key={g.id}
@@ -381,7 +334,7 @@ function GoalSection({
           />
         ))}
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -401,7 +354,6 @@ function GoalCard({
   const progress = goal.progress
   const spec = findSpec(goal.predicate.aggregate)
   const state = progress?.state ?? "ongoing"
-  const stateClass = stateBadgeClass(state)
   const accent = progress?.met
     ? "var(--st-in)"
     : state === "behind"
@@ -409,157 +361,195 @@ function GoalCard({
       : state === "at_risk"
         ? "var(--st-vhigh)"
         : "var(--ink)"
-  const tintClass = `goal-card goal-card--${state}`
-
-  const daysAhead = progress?.trajectory?.daysAheadOfSchedule ?? null
-  const projected = progress?.trajectory?.projectedAtTarget ?? null
-  const startedToday = isStartedToday(goal.startDate)
-  const windowLabel = windowPhrase(goal, progress?.dailySeries.length ?? 0)
 
   return (
-    <article className={tintClass}>
-      <header className="goal-card__head">
-        <div>
-          <h3 className="goal-card__title">{goal.title}</h3>
-          <p className="goal-card__rule">{summarisePredicate(goal.predicate)}</p>
+    <div
+      className="panel"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div className="panel__head" style={{ padding: "14px 16px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="gv-h3" style={{ fontSize: 14.5, lineHeight: 1.3 }}>
+            {goal.title}
+          </div>
+          <div className="hint mono mt-4" style={{ fontSize: 11, lineHeight: 1.4 }}>
+            {summarisePredicate(goal.predicate)}
+          </div>
         </div>
         {progress ? (
-          <span className={"badge " + stateClass} style={{ whiteSpace: "nowrap" }}>
+          <span className={"badge " + stateBadgeClass(state)} style={{ whiteSpace: "nowrap" }}>
             {labelForState(state)}
-          </span>
-        ) : null}
-      </header>
-
-      <div className="goal-card__kpi">
-        <div className="goal-card__value mono" style={{ color: accent }}>
-          {progress ? formatValue(progress.currentValue, progress.unit) : "—"}
-        </div>
-        <div className="goal-card__vs hint mono">
-          target {progress ? formatValue(progress.targetValue, progress.unit) : "—"}
-        </div>
-        {progress?.met ? (
-          <span className="badge badge--in goal-card__metpill">
-            <Icons.Check size={11} /> meeting target
           </span>
         ) : null}
       </div>
 
+      <div style={{ padding: "10px 16px 4px" }}>
+        <div className="row" style={{ alignItems: "baseline", gap: 8 }}>
+          <div
+            className="num-xl mono"
+            style={{
+              fontSize: 28,
+              lineHeight: 1,
+              letterSpacing: "-0.02em",
+              color: accent,
+            }}
+          >
+            {progress ? formatValue(progress.currentValue, progress.unit) : "—"}
+          </div>
+          <span className="hint mono">
+            target {progress ? formatValue(progress.targetValue, progress.unit) : "—"}
+          </span>
+        </div>
+      </div>
+
       {progress && progress.dailySeries.length > 0 ? (
-        <div className="goal-card__chart">
+        <div style={{ padding: "4px 6px 8px" }}>
           <GoalChart
             progress={progress}
             targetDate={goal.targetDate || undefined}
             goodDirection={spec.goodDirection}
-            height={160}
+            height={140}
             compact
           />
         </div>
       ) : (
-        <div className="goal-card__empty hint">
-          {startedToday
+        <div className="hint" style={{ padding: "12px 16px" }}>
+          {goal.startDate === todayIso()
             ? "Just started — readings will populate this chart as they come in."
             : "No data yet in the evaluation window."}
         </div>
       )}
 
-      {progress?.perUnit ? <PerUnitRow progress={progress} /> : null}
+      {progress?.perUnit ? (
+        <div className="row" style={{ padding: "0 16px 8px", alignItems: "center", gap: 8 }}>
+          <span className="hint mono" style={{ fontSize: 10.5 }}>
+            per {progress.perUnit.kind}
+          </span>
+          <div style={{ display: "flex", gap: 3, flex: 1, flexWrap: "wrap" }}>
+            {progress.perUnit.buckets.slice(-12).map((b, i) => (
+              <span
+                key={i}
+                title={`${b.label} · ${formatValue(b.value, progress.unit)}`}
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: b.met ? "var(--st-in)" : "var(--st-vhigh)",
+                  opacity: 0.9,
+                }}
+              />
+            ))}
+          </div>
+          <span className="hint mono" style={{ fontSize: 10.5 }}>
+            {progress.perUnit.metCount}/{progress.perUnit.totalCount}
+          </span>
+        </div>
+      ) : null}
 
       {progress?.narrative ? (
-        <p className="goal-card__narrative">{progress.narrative}</p>
+        <div className="hint" style={{ padding: "0 16px 4px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          {progress.narrative}
+        </div>
       ) : null}
-      {progress?.nudge ? <p className="goal-card__nudge">{progress.nudge}</p> : null}
+      {progress?.nudge ? (
+        <div
+          className="hint"
+          style={{
+            padding: "0 16px 8px",
+            fontSize: 11.5,
+            color: "var(--accent-2)",
+            fontStyle: "italic",
+          }}
+        >
+          {progress.nudge}
+        </div>
+      ) : null}
 
-      <footer className="goal-card__meta">
-        <span className="mono">{windowLabel}</span>
-        <span className="mono">
-          {goal.targetDate ? `target ${goal.targetDate}` : "ongoing"}
-        </span>
-        {daysAhead !== null && daysAhead !== undefined ? (
+      <div
+        className="row"
+        style={{
+          padding: "10px 16px",
+          borderTop: "1px solid var(--line-2)",
+          fontSize: 11,
+          color: "var(--ink-4)",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <span className="mono">since {goal.startDate}</span>
+        <span className="mono">· {goal.targetDate ? `target ${goal.targetDate}` : "ongoing"}</span>
+        {progress?.trajectory?.daysAheadOfSchedule !== undefined &&
+        progress?.trajectory?.daysAheadOfSchedule !== null ? (
           <span
             className="mono"
             style={{
               marginLeft: "auto",
-              color: daysAhead >= 0 ? "var(--st-in)" : "var(--ink-3)",
+              color: progress.trajectory.daysAheadOfSchedule >= 0 ? "var(--st-in)" : "var(--ink-3)",
             }}
           >
-            {daysAhead >= 0
-              ? `${daysAhead.toFixed(0)} d ahead`
-              : `${Math.abs(daysAhead).toFixed(0)} d behind`}
-          </span>
-        ) : projected !== null && projected !== undefined ? (
-          <span className="mono" style={{ marginLeft: "auto" }}>
-            proj {formatValue(projected, progress?.unit ?? "")}
+            {progress.trajectory.daysAheadOfSchedule >= 0
+              ? `${progress.trajectory.daysAheadOfSchedule.toFixed(0)} d ahead`
+              : `${Math.abs(progress.trajectory.daysAheadOfSchedule).toFixed(0)} d behind`}
           </span>
         ) : null}
-      </footer>
+      </div>
 
-      <div className="goal-card__actions">
-        <button className="pill-btn" onClick={onEdit} type="button">
+      <div
+        style={{
+          padding: "10px 16px 14px",
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+        }}
+      >
+        <button className="pill-btn" onClick={onEdit} type="button" style={{ height: 28, fontSize: 11.5 }}>
           Edit
         </button>
         {onMarkAchieved ? (
-          <button className="pill-btn" onClick={onMarkAchieved} type="button">
-            <Icons.Check size={12} /> Mark achieved
+          <button
+            className="pill-btn"
+            onClick={onMarkAchieved}
+            type="button"
+            style={{ height: 28, fontSize: 11.5 }}
+          >
+            <Icons.Check size={11} /> Achieved
           </button>
         ) : null}
         {onArchive ? (
-          <button className="pill-btn" onClick={onArchive} type="button">
+          <button
+            className="pill-btn"
+            onClick={onArchive}
+            type="button"
+            style={{ height: 28, fontSize: 11.5 }}
+          >
             Archive
           </button>
         ) : null}
         {onDelete ? (
           <button
-            className="pill-btn goal-card__danger"
+            className="pill-btn"
             onClick={onDelete}
             type="button"
-            title="Delete goal"
+            style={{
+              height: 28,
+              fontSize: 11.5,
+              marginLeft: "auto",
+              color: "var(--st-low)",
+            }}
           >
             Delete
           </button>
         ) : null}
       </div>
-    </article>
-  )
-}
-
-function PerUnitRow({ progress }: { progress: NonNullable<GoalWithProgress["progress"]> }) {
-  const per = progress.perUnit
-  if (!per) return null
-  return (
-    <div className="goal-card__perunit">
-      <div className="hint mono" style={{ fontSize: 10.5 }}>
-        per {per.kind}
-      </div>
-      <div className="goal-card__perunit-row">
-        {per.buckets.slice(-12).map((b, i) => (
-          <span
-            key={i}
-            title={`${b.label} · ${formatValue(b.value, progress.unit)}`}
-            className="goal-card__perunit-cell"
-            style={{
-              background: b.met ? "var(--st-in)" : "var(--st-vhigh)",
-            }}
-          />
-        ))}
-      </div>
-      <div className="hint mono" style={{ fontSize: 10.5 }}>
-        {per.metCount}/{per.totalCount}
-      </div>
     </div>
   )
 }
 
-function isStartedToday(startDate: string): boolean {
-  if (!startDate) return false
+function todayIso(): string {
   const d = new Date()
-  const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-  return iso === startDate
-}
-
-function windowPhrase(goal: GoalWithProgress, seriesLen: number): string {
-  const declared = goal.predicate.window.days
-  if (seriesLen > 0 && seriesLen < declared) {
-    return `since ${goal.startDate} · ${seriesLen} d`
-  }
-  return `last ${declared} d`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
