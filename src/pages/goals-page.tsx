@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts"
 
 import { GoalChart } from "@/components/goals/goal-chart"
 import {
@@ -256,57 +257,64 @@ function summariseStats(stats: { total: number; smashing: number; onTrack: numbe
 function MoodRing({ stats }: { stats: { total: number; smashing: number; onTrack: number; atRisk: number; behind: number } | null }) {
   const total = stats?.total ?? 0
   const good = (stats?.smashing ?? 0) + (stats?.onTrack ?? 0)
-  const ratio = total === 0 ? 0 : good / total
-  const pct = Math.round(ratio * 100)
-  const r = 48
-  const c = 2 * Math.PI * r
-  const offset = c - c * ratio
+  const pct = total === 0 ? 0 : Math.round((good / total) * 100)
+  const data =
+    total === 0
+      ? [{ name: "empty", value: 1 }]
+      : [
+          { name: "good", value: good },
+          { name: "risk", value: stats?.atRisk ?? 0 },
+          { name: "behind", value: stats?.behind ?? 0 },
+        ].filter((d) => d.value > 0)
+  const colors: Record<string, string> = {
+    good: "var(--st-in)",
+    risk: "var(--st-vhigh)",
+    behind: "var(--st-low)",
+    empty: "var(--line-2)",
+  }
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-      <svg width="120" height="120" viewBox="0 0 120 120">
-        <defs>
-          <linearGradient id="moodG" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="var(--st-in)" />
-            <stop offset="1" stopColor="var(--accent-2)" />
-          </linearGradient>
-        </defs>
-        <circle cx="60" cy="60" r={r} stroke="var(--line-2)" strokeWidth={10} fill="none" />
-        <circle
-          cx="60"
-          cy="60"
-          r={r}
-          stroke="url(#moodG)"
-          strokeWidth={10}
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={offset}
-          transform="rotate(-90 60 60)"
-          style={{ transition: "stroke-dashoffset 480ms ease" }}
-        />
-        <text
-          x="60"
-          y="57"
-          textAnchor="middle"
-          fontSize="28"
-          fontFamily="var(--font-mono)"
-          fill="var(--ink)"
-          fontWeight="500"
+    <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+      <div style={{ position: "relative", width: 128, height: 128 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              innerRadius={42}
+              outerRadius={60}
+              startAngle={90}
+              endAngle={-270}
+              stroke="none"
+              paddingAngle={data.length > 1 ? 2 : 0}
+              isAnimationActive={false}
+            >
+              {data.map((d, i) => (
+                <Cell key={i} fill={colors[d.name]} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "none",
+            textAlign: "center",
+          }}
         >
-          {pct}%
-        </text>
-        <text
-          x="60"
-          y="74"
-          textAnchor="middle"
-          fontSize="10"
-          fontFamily="var(--font-mono)"
-          fill="var(--ink-4)"
-        >
-          on&nbsp;track
-        </text>
-      </svg>
-      <div style={{ display: "grid", gap: 4 }}>
+          <div>
+            <div className="mono" style={{ fontSize: 26, fontWeight: 500, letterSpacing: "-0.02em" }}>
+              {pct}%
+            </div>
+            <div className="hint mono" style={{ fontSize: 10 }}>
+              on&nbsp;track
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
         <div className="kicker">Glyco insight</div>
         <div className="hint" style={{ fontSize: 12.5, color: "var(--ink-2)", maxWidth: 220, lineHeight: 1.5 }}>
           Ask Glyco <i>"am I on track?"</i> — every goal is available to the assistant through the{" "}

@@ -880,6 +880,52 @@ a:focus-visible,
 }
 
 /* ─────────────────────────────────────────────
+   Metric tiles (Overview 4-up strip)
+   ───────────────────────────────────────────── */
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  min-height: 168px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.metric-tile:hover {
+  border-color: color-mix(in oklch, var(--accent-2) 30%, var(--line));
+  box-shadow: 0 10px 28px oklch(0 0 0 / 4%);
+  transform: translateY(-1px);
+}
+.metric-tile__value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+}
+.metric-tile__value .mono {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.metric-tile__unit {
+  color: var(--ink-4);
+  font-size: 11.5px;
+}
+.metric-tile__chart {
+  margin: 4px -4px 0;
+  flex: 1;
+  min-height: 52px;
+}
+.metric-tile__sub {
+  color: var(--ink-4);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ─────────────────────────────────────────────
    Goals · hero + mood ring
    ───────────────────────────────────────────── */
 .goals-hero {

@@ -376,7 +376,9 @@ export function DailyTrace({
           />
           <YAxis
             type="number"
-            domain={[0, "dataMax + 0.4"]}
+            domain={[0, (dataMax: number) => Math.max(1, Math.ceil((dataMax + 0.4) * 2) / 2)]}
+            allowDecimals={false}
+            tickFormatter={(v: number) => (v === 0 ? "0" : v.toFixed(1))}
             tick={{ fontSize: 10, fontFamily: "Geist Mono", fill: "var(--ink-4)" }}
             stroke="var(--line)"
             axisLine={false}

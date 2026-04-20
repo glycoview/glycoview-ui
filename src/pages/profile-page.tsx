@@ -1,3 +1,14 @@
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts"
+
 import { MetricCard, PanelHead } from "@/components/dashboard/primitives"
 import { useApiResource } from "@/lib/api"
 import { Icons } from "@/lib/design-icons"
@@ -198,101 +209,87 @@ function unitPart(value: string): string {
 }
 
 function BasalCurve({ rows }: { rows: SchedulePoint[] }) {
-  const W = 1100
-  const H = 110
-  const PAD = { l: 8, r: 8, t: 10, b: 8 }
-  const BMAX = Math.max(
-    1.6,
-    ...rows.map((r) => parseFloat(r.value) || 0).map((v) => v * 1.2),
-  )
-  const x = (h: number) => PAD.l + (h / 24) * (W - PAD.l - PAD.r)
-  const y = (r: number) => PAD.t + (1 - r / BMAX) * (H - PAD.t - PAD.b)
-  const base = H - PAD.b
-
   const segs = rows.map((r, i) => {
     const startMin = parseTimeToMinutes(r.time)
-    const endMin =
-      i < rows.length - 1 ? parseTimeToMinutes(rows[i + 1].time) : 24 * 60
-    return {
-      start: startMin / 60,
-      end: endMin / 60,
-      rate: parseFloat(r.value) || 0,
-    }
+    const endMin = i < rows.length - 1 ? parseTimeToMinutes(rows[i + 1].time) : 24 * 60
+    return { start: startMin / 60, end: endMin / 60, rate: parseFloat(r.value) || 0 }
   })
+  // Build per-hour data so Recharts renders a step profile smoothly.
+  const data: { hour: number; rate: number }[] = []
+  for (let h = 0; h <= 24; h += 0.25) {
+    const seg = segs.find((s) => h >= s.start && h < s.end) ?? segs[segs.length - 1]
+    data.push({ hour: h, rate: seg?.rate ?? 0 })
+  }
+  const maxRate = Math.max(1.2, ...segs.map((s) => s.rate * 1.25))
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: "block" }}>
-      {[0.4, 0.8, 1.2].map((r) => (
-        <line
-          key={r}
-          x1={PAD.l}
-          x2={W - PAD.r}
-          y1={y(r)}
-          y2={y(r)}
-          stroke="var(--line-2)"
-          strokeDasharray="2 4"
-        />
-      ))}
-      {[0, 6, 12, 18, 24].map((h) => (
-        <line
-          key={h}
-          x1={x(h)}
-          x2={x(h)}
-          y1={PAD.t}
-          y2={base}
-          stroke="var(--line-2)"
-          strokeDasharray="2 6"
-          opacity="0.6"
-        />
-      ))}
-      {segs.map((s, i) => (
-        <rect
-          key={i}
-          x={x(s.start)}
-          y={y(s.rate)}
-          width={x(s.end) - x(s.start)}
-          height={base - y(s.rate)}
-          fill="var(--basal)"
-          opacity="0.28"
-        />
-      ))}
-      {segs.map((s, i) => (
-        <line
-          key={i}
-          x1={x(s.start)}
-          x2={x(s.end)}
-          y1={y(s.rate)}
-          y2={y(s.rate)}
-          stroke="var(--basal)"
-          strokeWidth="1.8"
-        />
-      ))}
-      {segs.slice(1).map((s, i) => (
-        <line
-          key={i}
-          x1={x(s.start)}
-          x2={x(s.start)}
-          y1={y(segs[i].rate)}
-          y2={y(s.rate)}
-          stroke="var(--basal)"
-          strokeWidth="1.2"
-          opacity="0.6"
-        />
-      ))}
-      {segs.map((s, i) => (
-        <text
-          key={i}
-          x={(x(s.start) + x(s.end)) / 2}
-          y={y(s.rate) - 4}
-          textAnchor="middle"
-          fontSize="10"
-          fontFamily="Geist Mono"
-          fill="var(--ink-3)"
-        >
-          {s.rate.toFixed(2)}
-        </text>
-      ))}
-    </svg>
+    <div style={{ width: "100%", height: 130 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 10, right: 12, left: -14, bottom: 4 }}>
+          <defs>
+            <linearGradient id="basalFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="var(--basal)" stopOpacity={0.35} />
+              <stop offset="1" stopColor="var(--basal)" stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke="var(--line-2)" strokeDasharray="2 4" />
+          <XAxis
+            dataKey="hour"
+            type="number"
+            domain={[0, 24]}
+            ticks={[0, 3, 6, 9, 12, 15, 18, 21, 24]}
+            tickFormatter={(h: number) => `${String(Math.floor(h)).padStart(2, "0")}:00`}
+            stroke="var(--line)"
+            tickLine={false}
+            tick={{ fontSize: 10.5, fontFamily: "var(--font-mono)", fill: "var(--ink-4)" }}
+            axisLine={{ stroke: "var(--line)" }}
+          />
+          <YAxis
+            domain={[0, maxRate]}
+            tickFormatter={(v: number) => v.toFixed(1)}
+            stroke="var(--ink-4)"
+            axisLine={false}
+            tickLine={false}
+            width={36}
+            tick={{ fontSize: 10.5, fontFamily: "var(--font-mono)", fill: "var(--ink-4)" }}
+          />
+          {[0.4, 0.8, 1.2].map((r) => (
+            <ReferenceLine
+              key={r}
+              y={r}
+              stroke="var(--line-2)"
+              strokeDasharray="2 4"
+              ifOverflow="hidden"
+            />
+          ))}
+          <Tooltip
+            cursor={{ stroke: "var(--line)", strokeWidth: 1 }}
+            formatter={(v) => [`${Number(v).toFixed(2)} U/h`, "basal"]}
+            labelFormatter={(h) => {
+              const n = Number(h)
+              const hh = Math.floor(n)
+              const mm = Math.round((n % 1) * 60)
+              return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+            }}
+            contentStyle={{
+              background: "var(--surface)",
+              border: "1px solid var(--line)",
+              borderRadius: 8,
+              fontSize: 12,
+              padding: "6px 9px",
+            }}
+          />
+          <Area
+            type="stepAfter"
+            dataKey="rate"
+            stroke="var(--basal)"
+            strokeWidth={1.8}
+            fill="url(#basalFill)"
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   )
 }
 

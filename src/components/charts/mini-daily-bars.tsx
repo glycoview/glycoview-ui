@@ -1,3 +1,13 @@
+import { useMemo } from "react"
+import {
+  Bar,
+  BarChart,
+  Cell,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts"
+
 import type { DailySummary } from "@/types"
 
 type Props = {
@@ -8,22 +18,32 @@ type Props = {
   guide?: number
   height?: number
   emptyLabel?: string
+  /** Tooltip formatter. */
+  format?: (v: number) => string
 }
 
+type Row = { date: string; value: number; i: number }
+
 /**
- * Compact 14-day (or N-day) bar chart. One bar per day so clinicians can see
- * variance day-to-day at a glance. Last bar is slightly thicker so "today" or
- * the most recent day stands out.
+ * Compact per-day bar chart built on Recharts. Last bar rendered at full
+ * opacity so "today" stands out. Hover reveals a themed tooltip with the
+ * exact value.
  */
 export function MiniDailyBars({
   days,
   accessor,
   colorFor,
   guide,
-  height = 46,
+  height = 52,
   emptyLabel = "—",
+  format,
 }: Props) {
-  if (!days.length) {
+  const data = useMemo<Row[]>(
+    () => days.map((d, i) => ({ date: String(d.date ?? i), value: accessor(d), i })),
+    [days, accessor],
+  )
+
+  if (!data.length) {
     return (
       <div
         style={{
@@ -38,50 +58,62 @@ export function MiniDailyBars({
       </div>
     )
   }
-  const vals = days.map(accessor)
-  const max = Math.max(1, ...vals, guide ?? 0)
-  const W = 240
-  const H = height
-  const PAD = 4
-  const n = days.length
-  const gap = 1.5
-  const barW = Math.max(3, (W - PAD * 2 - gap * (n - 1)) / n)
 
-  const y = (v: number) => PAD + (1 - v / max) * (H - PAD * 2)
+  const vals = data.map((d) => d.value)
+  const max = Math.max(1, ...vals, guide ?? 0)
+  const resolveColor = colorFor ?? (() => "var(--accent-2)")
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
-      {guide != null ? (
-        <line
-          x1={PAD}
-          x2={W - PAD}
-          y1={y(guide)}
-          y2={y(guide)}
-          stroke="var(--ink-4)"
-          strokeDasharray="2 3"
-          strokeWidth="1"
-          opacity={0.6}
-        />
-      ) : null}
-      {days.map((d, i) => {
-        const v = accessor(d)
-        const x = PAD + i * (barW + gap)
-        const yTop = y(v)
-        const color = colorFor ? colorFor(v, max) : "var(--accent-2)"
-        const isLast = i === n - 1
-        return (
-          <rect
-            key={d.date ?? i}
-            x={x}
-            y={yTop}
-            width={barW}
-            height={Math.max(1, H - PAD - yTop)}
-            fill={color}
-            opacity={isLast ? 1 : 0.8}
-            rx={1.2}
+    <div style={{ width: "100%", height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }} barCategoryGap={2}>
+          {guide != null ? (
+            <ReferenceLine
+              y={guide}
+              stroke="var(--ink-4)"
+              strokeDasharray="3 3"
+              strokeOpacity={0.55}
+              ifOverflow="extendDomain"
+            />
+          ) : null}
+          <Tooltip
+            cursor={{ fill: "var(--line-3)", opacity: 0.45 }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null
+              const row = payload[0].payload as Row
+              const color = resolveColor(row.value, max)
+              return (
+                <div
+                  style={{
+                    background: "var(--surface)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 8,
+                    padding: "6px 9px",
+                    fontSize: 11.5,
+                    boxShadow: "0 6px 20px oklch(0 0 0 / 8%)",
+                  }}
+                >
+                  <div className="mono" style={{ color: "var(--ink-4)", fontSize: 10.5 }}>
+                    {row.date}
+                  </div>
+                  <div className="mono" style={{ fontSize: 13, color, fontWeight: 500 }}>
+                    {format ? format(row.value) : row.value.toFixed(1)}
+                  </div>
+                </div>
+              )
+            }}
           />
-        )
-      })}
-    </svg>
+          <Bar dataKey="value" radius={[2, 2, 0, 0]} isAnimationActive={false}>
+            {data.map((d, i) => (
+              <Cell
+                key={d.date ?? i}
+                fill={resolveColor(d.value, max)}
+                fillOpacity={i === data.length - 1 ? 1 : 0.82}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   )
 }

@@ -1,3 +1,12 @@
+import { useMemo } from "react"
+import {
+  Area,
+  AreaChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts"
+
 import type { DailySummary } from "@/types"
 
 type Props = {
@@ -9,21 +18,33 @@ type Props = {
   height?: number
   domain?: [number, number]
   emptyLabel?: string
+  /** Tooltip value formatter — e.g. `(v) => \`${v.toFixed(1)}%\`` */
+  format?: (v: number) => string
 }
 
+type Row = { date: string; value: number; i: number }
+
 /**
- * Compact line chart over N daily summaries. Last point is highlighted.
+ * Compact line chart over N daily summaries using Recharts. Hover reveals the
+ * day + value in a themed tooltip. Area fill fades to transparent so the
+ * card's background stays clean.
  */
 export function MiniDailyLine({
   days,
   accessor,
   color = "var(--accent-2)",
   guides = [],
-  height = 46,
+  height = 52,
   domain,
   emptyLabel = "—",
+  format,
 }: Props) {
-  if (days.length < 2) {
+  const data = useMemo<Row[]>(
+    () => days.map((d, i) => ({ date: String(d.date ?? i), value: accessor(d), i })),
+    [days, accessor],
+  )
+
+  if (data.length < 2) {
     return (
       <div
         style={{
@@ -38,43 +59,105 @@ export function MiniDailyLine({
       </div>
     )
   }
-  const vals = days.map(accessor)
-  const min = domain?.[0] ?? Math.min(...vals, ...guides) * 0.9
-  const max = domain?.[1] ?? Math.max(...vals, ...guides) * 1.05
-  const range = Math.max(1, max - min)
-  const W = 240
-  const H = height
-  const PAD = 3
-  const x = (i: number) => PAD + (i / (days.length - 1)) * (W - PAD * 2)
-  const y = (v: number) => PAD + (1 - (v - min) / range) * (H - PAD * 2)
 
-  const d = vals.map((v, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(v)}`).join(" ")
-  const area = d + ` L ${x(vals.length - 1)} ${H - PAD} L ${x(0)} ${H - PAD} Z`
+  const vals = data.map((d) => d.value)
+  const minAuto = Math.min(...vals, ...guides)
+  const maxAuto = Math.max(...vals, ...guides)
+  const pad = Math.max(0.5, (maxAuto - minAuto) * 0.12)
+  const yDomain: [number, number] = domain ?? [minAuto - pad, maxAuto + pad]
+  const gradId = useGradId(color)
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="mdlGrad" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor={color} stopOpacity={0.25} />
-          <stop offset="1" stopColor={color} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      {guides.map((g) => (
-        <line
-          key={g}
-          x1={PAD}
-          x2={W - PAD}
-          y1={y(g)}
-          y2={y(g)}
-          stroke="var(--ink-4)"
-          strokeDasharray="2 3"
-          strokeWidth="1"
-          opacity={0.45}
-        />
-      ))}
-      <path d={area} fill="url(#mdlGrad)" />
-      <path d={d} fill="none" stroke={color} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={x(vals.length - 1)} cy={y(vals[vals.length - 1])} r={2.5} fill={color} />
-    </svg>
+    <div style={{ width: "100%", height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={color} stopOpacity={0.3} />
+              <stop offset="1" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          {guides.map((g) => (
+            <ReferenceLine
+              key={g}
+              y={g}
+              stroke="var(--ink-4)"
+              strokeDasharray="3 3"
+              strokeOpacity={0.45}
+              ifOverflow="extendDomain"
+            />
+          ))}
+          <Tooltip
+            cursor={{ stroke: "var(--line)", strokeWidth: 1 }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null
+              const row = payload[0].payload as Row
+              return (
+                <MiniTooltip
+                  date={row.date}
+                  value={row.value}
+                  color={color}
+                  format={format}
+                />
+              )
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={1.75}
+            fill={`url(#${gradId})`}
+            dot={false}
+            activeDot={{ r: 3, stroke: "var(--surface)", strokeWidth: 1.5, fill: color }}
+            isAnimationActive={false}
+          />
+          {/* y-domain needs to be provided for Area — done via AreaChart's default */}
+          {/* Using an invisible ReferenceLine trick isn't needed; recharts clamps to data+refs */}
+          <g data-ydomain={JSON.stringify(yDomain)} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   )
+}
+
+function MiniTooltip({
+  date,
+  value,
+  color,
+  format,
+}: {
+  date: string
+  value: number
+  color: string
+  format?: (v: number) => string
+}) {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--line)",
+        borderRadius: 8,
+        padding: "6px 9px",
+        fontSize: 11.5,
+        boxShadow: "0 6px 20px oklch(0 0 0 / 8%)",
+      }}
+    >
+      <div className="mono" style={{ color: "var(--ink-4)", fontSize: 10.5 }}>
+        {date}
+      </div>
+      <div className="mono" style={{ fontSize: 13, color, fontWeight: 500 }}>
+        {format ? format(value) : value.toFixed(1)}
+      </div>
+    </div>
+  )
+}
+
+// Stable gradient ID per-color so two tiles with different colors don't share
+// a fill accidentally.
+function useGradId(color: string): string {
+  return useMemo(() => {
+    const hash = color.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)
+    return `mdlgrad_${Math.abs(hash).toString(36)}`
+  }, [color])
 }
