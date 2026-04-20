@@ -880,6 +880,19 @@ a:focus-visible,
 }
 
 /* ─────────────────────────────────────────────
+   Day strip heatmap (Overview 14-day pattern)
+   ───────────────────────────────────────────── */
+.day-cell:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 1.5px var(--accent-2), 0 2px 6px oklch(0 0 0 / 12%);
+  z-index: 2;
+}
+.day-cell:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-2);
+}
+
+/* ─────────────────────────────────────────────
    Metric tiles (Overview 4-up strip)
    ───────────────────────────────────────────── */
 .metric-tile {

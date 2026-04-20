@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 
 import { DailyTrace } from "@/components/charts/daily-trace"
 import { TIRBar } from "@/components/charts/tir-bar"
@@ -18,7 +19,24 @@ function addDays(iso: string, delta: number): string {
 
 export function DailyPage({ token }: { token: string }) {
   const tz = userTimeZone()
-  const [date, setDate] = useState(() => todayInTz(tz))
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialDate = searchParams.get("date") || todayInTz(tz)
+  const [date, setDate] = useState(initialDate)
+
+  // Keep URL in sync with the active date so the heatmap jump links and
+  // browser back/forward work correctly.
+  useEffect(() => {
+    const qp = searchParams.get("date")
+    if (qp && qp !== date) setDate(qp)
+  }, [searchParams])
+  useEffect(() => {
+    if (searchParams.get("date") !== date) {
+      const next = new URLSearchParams(searchParams)
+      next.set("date", date)
+      setSearchParams(next, { replace: true })
+    }
+  }, [date])
+
   const { data, loading, error } = useApiResource<DailyResponse>(
     `/app/api/daily?date=${date}&tz=${encodeURIComponent(tz)}`,
     token,
