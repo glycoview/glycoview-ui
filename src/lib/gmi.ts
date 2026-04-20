@@ -19,3 +19,16 @@ export function gmiFromMmolL(avgMmolL: number): number {
 }
 
 export const GMI_TARGET_ADULT_T1D = 7.0
+
+/**
+ * Classic estimated A1C from average glucose (ADAG study, Nathan 2008).
+ *
+ *   eA1C (%) = (avg_mg_dL + 46.7) / 28.7
+ *
+ * GMI is the recommended CGM-era estimate (see Bergenstal 2018 above); eA1C
+ * is still commonly referenced and diverges from GMI at higher averages.
+ */
+export function ea1cFromMgDl(avgMgDl: number): number {
+  if (!Number.isFinite(avgMgDl) || avgMgDl <= 0) return 0
+  return (avgMgDl + 46.7) / 28.7
+}

@@ -6,7 +6,7 @@ import { TIRStack } from "@/components/charts/tir-stack"
 import { PanelHead, Stat } from "@/components/dashboard/primitives"
 import { adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
-import { gmiFromMgDl } from "@/lib/gmi"
+import { ea1cFromMgDl, gmiFromMgDl } from "@/lib/gmi"
 import type { TrendsResponse } from "@/types"
 
 export function TrendsPage({ token }: { token: string }) {
@@ -36,6 +36,7 @@ export function TrendsPage({ token }: { token: string }) {
   const readings = data.agp.reduce((sum, b) => sum + (b.points ?? 0), 0)
   const avgGlucoseNum = parseFloat(numericPart(avg))
   const gmi = gmiFromMgDl(avgGlucoseNum)
+  const ea1c = ea1cFromMgDl(avgGlucoseNum)
 
   return (
     <>
@@ -107,12 +108,16 @@ export function TrendsPage({ token }: { token: string }) {
               }}
             >
               <KpiCell
-                label={`GMI · est. A1c · ${days}d`}
+                label={`GMI · ${days}d`}
                 value={gmi ? gmi.toFixed(1) : "—"}
                 unit="%"
               />
+              <KpiCell
+                label="eA1C · ADAG"
+                value={ea1c ? ea1c.toFixed(1) : "—"}
+                unit="%"
+              />
               <KpiCell label="Avg glucose" value={numericPart(avg) || avg} unit={unitPart(avg)} />
-              <KpiCell label="Variability" value={numericPart(cv) || cv} unit={unitPart(cv)} />
             </div>
 
             <div
@@ -124,6 +129,7 @@ export function TrendsPage({ token }: { token: string }) {
                 borderTop: "1px solid var(--line-2)",
               }}
             >
+              <KpiCell label="Variability" value={numericPart(cv) || cv} unit={unitPart(cv)} />
               <KpiCell
                 label="Sensor wear"
                 value={numericPart(sensor) || sensor}
@@ -134,15 +140,6 @@ export function TrendsPage({ token }: { token: string }) {
                 value={
                   data.daysSummary.length > 0
                     ? Math.round(Math.max(...data.daysSummary.map((d) => d.tir))).toString()
-                    : "—"
-                }
-                unit="% TIR"
-              />
-              <KpiCell
-                label="Worst day"
-                value={
-                  data.daysSummary.length > 0
-                    ? Math.round(Math.min(...data.daysSummary.map((d) => d.tir))).toString()
                     : "—"
                 }
                 unit="% TIR"
@@ -233,6 +230,7 @@ export function TrendsPage({ token }: { token: string }) {
                     <th>Day</th>
                     <th>Avg</th>
                     <th>GMI</th>
+                    <th>eA1C</th>
                     <th>TIR</th>
                     <th>Carbs</th>
                     <th>Insulin</th>
@@ -244,6 +242,7 @@ export function TrendsPage({ token }: { token: string }) {
                     .reverse()
                     .map((d) => {
                       const dayGmi = gmiFromMgDl(d.avgGlucose)
+                      const dayEa1c = ea1cFromMgDl(d.avgGlucose)
                       return (
                       <tr key={d.date} className="clickable">
                         <td>
@@ -268,6 +267,7 @@ export function TrendsPage({ token }: { token: string }) {
                         >
                           {dayGmi ? dayGmi.toFixed(1) + "%" : "—"}
                         </td>
+                        <td className="mono hint">{dayEa1c ? dayEa1c.toFixed(1) + "%" : "—"}</td>
                         <td>
                           <div className="row" style={{ gap: 8 }}>
                             <span className="mono" style={{ minWidth: 38 }}>

@@ -12,7 +12,7 @@ import {
 import { MetricTile } from "@/components/dashboard/metric-tile"
 import { adaptDailySummaries, adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
-import { GMI_TARGET_ADULT_T1D, gmiFromMgDl } from "@/lib/gmi"
+import { GMI_TARGET_ADULT_T1D, ea1cFromMgDl, gmiFromMgDl } from "@/lib/gmi"
 import { Icons } from "@/lib/design-icons"
 import type { DailyResponse, DailySummary, OverviewResponse, TrendsResponse } from "@/types"
 
@@ -496,13 +496,18 @@ function GmiTile({ days }: { days: DailySummary[] }) {
   const validDays = days.filter((d) => d.avgGlucose > 0)
   const avgGlu = avg(validDays.map((d) => d.avgGlucose))
   const gmi = gmiFromMgDl(avgGlu)
+  const ea1c = ea1cFromMgDl(avgGlu)
   const color = !gmi ? "var(--ink)" : gmi <= 7 ? "var(--st-in)" : gmi <= 8 ? "var(--st-high)" : "var(--st-vhigh)"
   return (
     <MetricTile
       title="GMI · est. A1c · 14d"
       value={gmi ? gmi.toFixed(1) : "—"}
       unit="%"
-      sub={avgGlu ? `avg glucose ${Math.round(avgGlu)} mg/dL · target ≤ ${GMI_TARGET_ADULT_T1D.toFixed(1)}%` : "awaiting data"}
+      sub={
+        avgGlu
+          ? `eA1C ${ea1c.toFixed(1)}% · avg ${Math.round(avgGlu)} mg/dL · target ≤ ${GMI_TARGET_ADULT_T1D.toFixed(1)}%`
+          : "awaiting data"
+      }
       color={color}
       chart={
         <MiniDailyLine
