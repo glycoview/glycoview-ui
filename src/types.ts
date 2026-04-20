@@ -241,6 +241,7 @@ export type UpdateCheckResponse = {
   releaseUrl?: string
   checkedAt?: string
   source: string
+  warning?: string
 }
 
 export type ApplianceActionResponse = {

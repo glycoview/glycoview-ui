@@ -127,43 +127,75 @@ export function SettingsPage() {
 
   const load = async () => {
     setLoading(true)
-    try {
-      const [statusRes, updateRes, providersRes, tlsRes, dynProvRes, dynRes] =
-        await Promise.all([
-          fetchSettingsStatus(),
-          fetchUpdateCheck(),
-          fetchTLSProviders(),
-          fetchTLSConfig(),
-          fetchDynamicDNSProviders(),
-          fetchDynamicDNSConfig(),
-        ])
-      setStatus(statusRes)
-      setUpdateInfo(updateRes)
-      setProviders(providersRes.providers)
-      setChallenges(providersRes.challenges ?? [])
-      setDynamicDNSProviders(dynProvRes.providers)
-      setUpdateTag(updateRes.latestTag || statusRes.currentTag || "")
-      setTLSForm({
-        domain: tlsRes.domain || "",
-        email: tlsRes.email || "",
-        challengeType: tlsRes.challengeType === "dns-01" ? "dns-01" : "http-01",
-        provider: tlsRes.provider || providersRes.providers[0]?.id || "",
-        env: tlsRes.env || {},
-      })
-      setDynForm({
-        enabled: dynRes.enabled,
-        provider: dynRes.provider || dynProvRes.providers[0]?.id || "",
-        zone: dynRes.zone || "",
-        recordName: dynRes.recordName || "",
-        env: dynRes.env || {},
-      })
-      setError("")
-    } catch (err) {
-      const apiError = err as ApiError
-      setError(apiError.message || "Failed to load settings")
-    } finally {
-      setLoading(false)
+    // Fire everything in parallel but tolerate individual failures — a 403
+    // from GitHub on /updates/check should not hide TLS/DynDNS config.
+    const [statusRes, updateRes, providersRes, tlsRes, dynProvRes, dynRes] =
+      await Promise.allSettled([
+        fetchSettingsStatus(),
+        fetchUpdateCheck(),
+        fetchTLSProviders(),
+        fetchTLSConfig(),
+        fetchDynamicDNSProviders(),
+        fetchDynamicDNSConfig(),
+      ])
+
+    const warnings: string[] = []
+    const warn = (label: string, res: PromiseSettledResult<unknown>) => {
+      if (res.status === "rejected") {
+        const msg = (res.reason as ApiError)?.message ?? String(res.reason)
+        warnings.push(`${label}: ${msg}`)
+      }
     }
+    warn("Update check", updateRes)
+    warn("TLS providers", providersRes)
+    warn("TLS config", tlsRes)
+    warn("DynDNS providers", dynProvRes)
+    warn("DynDNS config", dynRes)
+
+    if (statusRes.status === "fulfilled") setStatus(statusRes.value)
+    if (updateRes.status === "fulfilled") {
+      setUpdateInfo(updateRes.value)
+      const fallbackTag = statusRes.status === "fulfilled" ? statusRes.value.currentTag : ""
+      setUpdateTag(updateRes.value.latestTag || fallbackTag || "")
+    } else if (statusRes.status === "fulfilled") {
+      setUpdateTag(statusRes.value.currentTag || "")
+    }
+    if (providersRes.status === "fulfilled") {
+      setProviders(providersRes.value.providers)
+      setChallenges(providersRes.value.challenges ?? [])
+    }
+    if (dynProvRes.status === "fulfilled") {
+      setDynamicDNSProviders(dynProvRes.value.providers)
+    }
+    if (tlsRes.status === "fulfilled") {
+      const providers = providersRes.status === "fulfilled" ? providersRes.value.providers : []
+      setTLSForm({
+        domain: tlsRes.value.domain || "",
+        email: tlsRes.value.email || "",
+        challengeType: tlsRes.value.challengeType === "dns-01" ? "dns-01" : "http-01",
+        provider: tlsRes.value.provider || providers[0]?.id || "",
+        env: tlsRes.value.env || {},
+      })
+    }
+    if (dynRes.status === "fulfilled") {
+      const providers = dynProvRes.status === "fulfilled" ? dynProvRes.value.providers : []
+      setDynForm({
+        enabled: dynRes.value.enabled,
+        provider: dynRes.value.provider || providers[0]?.id || "",
+        zone: dynRes.value.zone || "",
+        recordName: dynRes.value.recordName || "",
+        env: dynRes.value.env || {},
+      })
+    }
+
+    if (statusRes.status === "rejected") {
+      setError((statusRes.reason as ApiError)?.message ?? "Failed to load settings")
+    } else if (warnings.length) {
+      setError(warnings.join(" · "))
+    } else {
+      setError("")
+    }
+    setLoading(false)
   }
 
   useEffect(() => {
