@@ -46,11 +46,12 @@ function App() {
   }
 
   if (!authStatus.authenticated || !authStatus.user) {
-    return <LoginPage onSuccess={refreshAuth} />
+    return <LoginPage onSuccess={refreshAuth} appVersion={authStatus.appVersion} />
   }
 
   const shellProps = {
     user: authStatus.user,
+    appVersion: authStatus.appVersion,
     onLogout: async () => {
       await logoutRequest()
       await refreshAuth()

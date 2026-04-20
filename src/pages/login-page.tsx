@@ -4,7 +4,13 @@ import { login } from "@/lib/api"
 import type { ApiError } from "@/lib/api"
 import { BrandMark } from "@/lib/design-icons"
 
-export function LoginPage({ onSuccess }: { onSuccess: () => Promise<unknown> }) {
+export function LoginPage({
+  onSuccess,
+  appVersion,
+}: {
+  onSuccess: () => Promise<unknown>
+  appVersion?: string
+}) {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -25,6 +31,9 @@ export function LoginPage({ onSuccess }: { onSuccess: () => Promise<unknown> }) 
     }
   }
 
+  const hostname = typeof window !== "undefined" ? window.location.hostname : ""
+  const isSecure = typeof window !== "undefined" && window.location.protocol === "https:"
+
   return (
     <div className="auth-bg">
       <div
@@ -33,7 +42,7 @@ export function LoginPage({ onSuccess }: { onSuccess: () => Promise<unknown> }) 
           gridTemplateColumns: "minmax(0, 440px) minmax(0, 1fr)",
           gap: 40,
           width: "100%",
-          maxWidth: 1000,
+          maxWidth: 960,
         }}
       >
         <div className="panel" style={{ padding: 32 }}>
@@ -82,7 +91,7 @@ export function LoginPage({ onSuccess }: { onSuccess: () => Promise<unknown> }) 
             </button>
             <div className="row between hint">
               <a href="#">Forgot password?</a>
-              <span className="mono">v0.9.3</span>
+              {appVersion ? <span className="mono">{appVersion}</span> : null}
             </div>
           </form>
         </div>
@@ -98,9 +107,12 @@ export function LoginPage({ onSuccess }: { onSuccess: () => Promise<unknown> }) 
               marginTop: 6,
             }}
           >
-            glycoview.local
+            {hostname || "glycoview"}
           </div>
-          <div className="mono hint mt-8">TLS · self-hosted · v0.9.3</div>
+          <div className="mono hint mt-8">
+            {isSecure ? "TLS · self-hosted" : "self-hosted"}
+            {appVersion ? ` · ${appVersion}` : ""}
+          </div>
           <div
             style={{
               marginTop: 24,
@@ -108,28 +120,20 @@ export function LoginPage({ onSuccess }: { onSuccess: () => Promise<unknown> }) 
               background: "var(--surface)",
               border: "1px solid var(--line)",
               borderRadius: 12,
-              display: "grid",
-              gap: 12,
+              color: "var(--ink-3)",
+              fontSize: 13,
+              lineHeight: 1.6,
             }}
           >
-            <div className="row">
-              <span className="dot" />
-              <span className="mono" style={{ fontSize: 12 }}>
-                Nightscout bridge · healthy
-              </span>
-            </div>
-            <div className="row">
-              <span className="dot" style={{ background: "var(--st-in)" }} />
-              <span className="mono" style={{ fontSize: 12 }}>
-                Dexcom G7 · streaming
-              </span>
-            </div>
-            <div className="row">
-              <span className="dot" style={{ background: "var(--st-in)" }} />
-              <span className="mono" style={{ fontSize: 12 }}>
-                Omnipod 5 · automated
-              </span>
-            </div>
+            <p style={{ margin: 0, color: "var(--ink)" }}>What this dashboard is</p>
+            <p style={{ margin: "8px 0 0" }}>
+              A self-hosted clinical dashboard for your Nightscout-compatible data.
+              Sign in with a clinician or admin account to review glucose trends,
+              daily traces and loop status.
+            </p>
+            <p className="hint" style={{ margin: "8px 0 0", fontSize: 11.5 }}>
+              Pump, CGM and loop data are visible to signed-in users only.
+            </p>
           </div>
         </div>
       </div>

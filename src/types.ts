@@ -155,6 +155,7 @@ export type AuthStatus = {
   setupRequired: boolean
   authenticated: boolean
   user?: AppUser
+  appVersion?: string
 }
 
 export type TLSField = {

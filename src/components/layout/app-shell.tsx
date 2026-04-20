@@ -6,6 +6,7 @@ import type { AppUser } from "@/types"
 
 type AppShellProps = {
   user: AppUser
+  appVersion?: string
   onLogout: () => void
 }
 
@@ -39,11 +40,13 @@ const titleMap: Record<string, string> = {
   "/settings": "Settings",
 }
 
-export function AppShell({ user, onLogout }: AppShellProps) {
+export function AppShell({ user, appVersion, onLogout }: AppShellProps) {
   const location = useLocation()
   const title = useMemo(() => titleMap[location.pathname] ?? "Glycoview", [location.pathname])
   const showAdmin = user.role === "admin"
   const userInitials = initials(user.displayName || user.username)
+  const hostname = typeof window !== "undefined" ? window.location.hostname : ""
+  const versionLabel = appVersion ? `Appliance · ${appVersion}` : "Appliance"
 
   return (
     <div className="gv-app">
@@ -54,7 +57,7 @@ export function AppShell({ user, onLogout }: AppShellProps) {
           </div>
           <div className="brand__wm">
             <b>Glycoview</b>
-            <span>Appliance · v0.9.3</span>
+            <span>{versionLabel}</span>
           </div>
         </div>
 
@@ -96,9 +99,11 @@ export function AppShell({ user, onLogout }: AppShellProps) {
           </div>
           <div className="side__env">
             <span className="dot" /> Appliance online
-            <span className="mono" style={{ marginLeft: "auto", color: "var(--ink-4)" }}>
-              glycoview.local
-            </span>
+            {hostname ? (
+              <span className="mono" style={{ marginLeft: "auto", color: "var(--ink-4)" }}>
+                {hostname}
+              </span>
+            ) : null}
           </div>
         </div>
       </aside>
