@@ -23,6 +23,7 @@ const dashboardItems: NavItemSpec[] = [
   { to: "/trends", label: "Trends", icon: Icons.Trend, kbd: "3" },
   { to: "/profile", label: "Profile", icon: Icons.User, kbd: "4" },
   { to: "/devices", label: "Devices", icon: Icons.Device, kbd: "5" },
+  { to: "/ai", label: "AI chat", icon: Icons.Sparkles, kbd: "8" },
 ]
 
 const adminItems: NavItemSpec[] = [
@@ -36,6 +37,7 @@ const titleMap: Record<string, string> = {
   "/trends": "Trends",
   "/profile": "Profile",
   "/devices": "Devices",
+  "/ai": "AI chat",
   "/users": "Access",
   "/settings": "Settings",
 }

@@ -138,6 +138,11 @@ export const Icons = {
     { tag: "rect", x: 2, y: 5, width: 20, height: 14, rx: 2 },
     "M2 7l10 7 10-7",
   ]),
+  Sparkles: build([
+    "M12 3v4M12 17v4M3 12h4M17 12h4",
+    "M5.5 5.5l2.5 2.5M16 16l2.5 2.5M5.5 18.5l2.5-2.5M16 8l2.5-2.5",
+    { tag: "circle", cx: 12, cy: 12, r: 2.5 },
+  ]),
 }
 
 export function BrandMark({ size = 24 }: { size?: number }) {
