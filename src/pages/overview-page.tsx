@@ -34,6 +34,13 @@ export function OverviewPage({ token }: { token: string }) {
     [trends.data],
   )
   const backendDays: DailySummary[] = trends.data?.daysSummary ?? []
+  const trendsAvgGlucose = useMemo(() => {
+    if (!trends.data) return 0
+    const metric = trends.data.metrics.find((m) => m.id === "avg")
+    if (!metric) return 0
+    const match = metric.value.match(/-?\d+(\.\d+)?/)
+    return match ? parseFloat(match[0]) : 0
+  }, [trends.data])
 
   if (overview.error) {
     return <ErrorBanner message={overview.error.message} />
@@ -236,7 +243,7 @@ export function OverviewPage({ token }: { token: string }) {
       </div>
 
       <div className="gv-grid gv-grid-4 mt-16">
-        <GmiTile days={backendDays} />
+        <GmiTile days={backendDays} trendAvgGlucose={trendsAvgGlucose} />
         <TirDailyTile days={backendDays} />
         <DailyCarbsTile days={backendDays} />
         <DailyInsulinTile days={backendDays} />
@@ -492,9 +499,18 @@ function avg(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-function GmiTile({ days }: { days: DailySummary[] }) {
+function GmiTile({
+  days,
+  trendAvgGlucose,
+}: {
+  days: DailySummary[]
+  trendAvgGlucose: number
+}) {
   const validDays = days.filter((d) => d.avgGlucose > 0)
-  const avgGlu = avg(validDays.map((d) => d.avgGlucose))
+  // Use the backend-computed overall mean glucose (all readings, not
+  // mean-of-daily-means) so GMI matches the definition and matches what
+  // the Trends page reports.
+  const avgGlu = trendAvgGlucose > 0 ? trendAvgGlucose : avg(validDays.map((d) => d.avgGlucose))
   const gmi = gmiFromMgDl(avgGlu)
   const ea1c = ea1cFromMgDl(avgGlu)
   const color = !gmi ? "var(--ink)" : gmi <= 7 ? "var(--st-in)" : gmi <= 8 ? "var(--st-high)" : "var(--st-vhigh)"
