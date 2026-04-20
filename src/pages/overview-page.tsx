@@ -12,6 +12,7 @@ import {
 import { MetricTile } from "@/components/dashboard/metric-tile"
 import { adaptDailySummaries, adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
+import { GMI_TARGET_ADULT_T1D, gmiFromMgDl } from "@/lib/gmi"
 import { Icons } from "@/lib/design-icons"
 import type { DailyResponse, DailySummary, OverviewResponse, TrendsResponse } from "@/types"
 
@@ -235,7 +236,7 @@ export function OverviewPage({ token }: { token: string }) {
       </div>
 
       <div className="gv-grid gv-grid-4 mt-16">
-        <AvgGlucoseTile days={backendDays} />
+        <GmiTile days={backendDays} />
         <TirDailyTile days={backendDays} />
         <DailyCarbsTile days={backendDays} />
         <DailyInsulinTile days={backendDays} />
@@ -491,21 +492,25 @@ function avg(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length
 }
 
-function AvgGlucoseTile({ days }: { days: DailySummary[] }) {
-  const value = avg(days.filter((d) => d.avgGlucose > 0).map((d) => d.avgGlucose))
+function GmiTile({ days }: { days: DailySummary[] }) {
+  const validDays = days.filter((d) => d.avgGlucose > 0)
+  const avgGlu = avg(validDays.map((d) => d.avgGlucose))
+  const gmi = gmiFromMgDl(avgGlu)
+  const color = !gmi ? "var(--ink)" : gmi <= 7 ? "var(--st-in)" : gmi <= 8 ? "var(--st-high)" : "var(--st-vhigh)"
   return (
     <MetricTile
-      title="Avg glucose · 14d"
-      value={value ? Math.round(value).toString() : "—"}
-      unit="mg/dL"
-      sub="daily averages over the last two weeks"
+      title="GMI · est. A1c · 14d"
+      value={gmi ? gmi.toFixed(1) : "—"}
+      unit="%"
+      sub={avgGlu ? `avg glucose ${Math.round(avgGlu)} mg/dL · target ≤ ${GMI_TARGET_ADULT_T1D.toFixed(1)}%` : "awaiting data"}
+      color={color}
       chart={
         <MiniDailyLine
-          days={days}
-          accessor={(d) => d.avgGlucose}
-          color="var(--ink)"
-          guides={[154]}
-          domain={[60, 260]}
+          days={validDays}
+          accessor={(d) => gmiFromMgDl(d.avgGlucose)}
+          color={color}
+          guides={[GMI_TARGET_ADULT_T1D]}
+          domain={[5, 11]}
         />
       }
     />

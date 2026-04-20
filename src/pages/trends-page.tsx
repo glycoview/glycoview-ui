@@ -6,6 +6,7 @@ import { TIRStack } from "@/components/charts/tir-stack"
 import { PanelHead, Stat } from "@/components/dashboard/primitives"
 import { adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
+import { gmiFromMgDl } from "@/lib/gmi"
 import type { TrendsResponse } from "@/types"
 
 export function TrendsPage({ token }: { token: string }) {
@@ -33,6 +34,8 @@ export function TrendsPage({ token }: { token: string }) {
   const sensor = data.metrics.find((m) => m.id === "sensor")?.value ?? "—"
   const tir = data.timeInRange.find((b) => b.label === "Target")
   const readings = data.agp.reduce((sum, b) => sum + (b.points ?? 0), 0)
+  const avgGlucoseNum = parseFloat(numericPart(avg))
+  const gmi = gmiFromMgDl(avgGlucoseNum)
 
   return (
     <>
@@ -103,9 +106,13 @@ export function TrendsPage({ token }: { token: string }) {
                 borderTop: "1px solid var(--line-2)",
               }}
             >
+              <KpiCell
+                label={`GMI · est. A1c · ${days}d`}
+                value={gmi ? gmi.toFixed(1) : "—"}
+                unit="%"
+              />
               <KpiCell label="Avg glucose" value={numericPart(avg) || avg} unit={unitPart(avg)} />
               <KpiCell label="Variability" value={numericPart(cv) || cv} unit={unitPart(cv)} />
-              <KpiCell label="Sensor wear" value={numericPart(sensor) || sensor} unit={unitPart(sensor)} />
             </div>
 
             <div
@@ -117,7 +124,11 @@ export function TrendsPage({ token }: { token: string }) {
                 borderTop: "1px solid var(--line-2)",
               }}
             >
-              <KpiCell label="Days" value={data.daysSummary.length.toString()} unit="" />
+              <KpiCell
+                label="Sensor wear"
+                value={numericPart(sensor) || sensor}
+                unit={unitPart(sensor)}
+              />
               <KpiCell
                 label="Best day"
                 value={
@@ -221,6 +232,7 @@ export function TrendsPage({ token }: { token: string }) {
                   <tr>
                     <th>Day</th>
                     <th>Avg</th>
+                    <th>GMI</th>
                     <th>TIR</th>
                     <th>Carbs</th>
                     <th>Insulin</th>
@@ -230,7 +242,9 @@ export function TrendsPage({ token }: { token: string }) {
                   {data.daysSummary
                     .slice()
                     .reverse()
-                    .map((d) => (
+                    .map((d) => {
+                      const dayGmi = gmiFromMgDl(d.avgGlucose)
+                      return (
                       <tr key={d.date} className="clickable">
                         <td>
                           <div className="mono">
@@ -239,6 +253,21 @@ export function TrendsPage({ token }: { token: string }) {
                           <div className="hint">{d.day}</div>
                         </td>
                         <td className="mono">{Math.round(d.avgGlucose)}</td>
+                        <td
+                          className="mono"
+                          style={{
+                            color:
+                              !dayGmi
+                                ? undefined
+                                : dayGmi <= 7
+                                  ? "var(--st-in)"
+                                  : dayGmi <= 8
+                                    ? "var(--st-high)"
+                                    : "var(--st-vhigh)",
+                          }}
+                        >
+                          {dayGmi ? dayGmi.toFixed(1) + "%" : "—"}
+                        </td>
                         <td>
                           <div className="row" style={{ gap: 8 }}>
                             <span className="mono" style={{ minWidth: 38 }}>
@@ -262,7 +291,8 @@ export function TrendsPage({ token }: { token: string }) {
                         <td className="mono">{Math.round(d.carbs)}g</td>
                         <td className="mono">{d.insulin.toFixed(1)}U</td>
                       </tr>
-                    ))}
+                    )
+                    })}
                 </tbody>
               </table>
             )}
