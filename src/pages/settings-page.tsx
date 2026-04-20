@@ -16,6 +16,7 @@ import {
 } from "@/lib/api"
 import type { ApiError } from "@/lib/api"
 import { Icons } from "@/lib/design-icons"
+import { COMMON_TIMEZONES, browserTimeZone } from "@/lib/time"
 import type {
   ApplianceDynamicDNSConfig,
   ApplianceStatus,
@@ -31,28 +32,30 @@ type DisplayState = {
   theme: "light" | "dark"
   density: "compact" | "default" | "airy"
   agpBands: "on" | "off"
+  timeZone: string
 }
 
 const STORAGE_KEY = "gv_display_prefs"
 
-function loadPrefs(): DisplayState {
-  if (typeof window === "undefined") {
-    return { units: "mg/dL", theme: "light", density: "default", agpBands: "on" }
+function defaultPrefs(): DisplayState {
+  return {
+    units: "mg/dL",
+    theme: "light",
+    density: "default",
+    agpBands: "on",
+    timeZone: "auto",
   }
+}
+
+function loadPrefs(): DisplayState {
+  if (typeof window === "undefined") return defaultPrefs()
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (raw)
-      return {
-        units: "mg/dL",
-        theme: "light",
-        density: "default",
-        agpBands: "on",
-        ...JSON.parse(raw),
-      }
+    if (raw) return { ...defaultPrefs(), ...JSON.parse(raw) }
   } catch {
     /* ignore */
   }
-  return { units: "mg/dL", theme: "light", density: "default", agpBands: "on" }
+  return defaultPrefs()
 }
 
 type TLSForm = {
@@ -371,6 +374,24 @@ export function SettingsPage() {
                   {l}
                 </button>
               ))}
+            </div>
+          </div>
+          <div style={{ gridColumn: "span 2" }}>
+            <div className="label">Time zone</div>
+            <select
+              className="input mono"
+              value={prefs.timeZone}
+              onChange={(e) => setPref("timeZone", e.target.value)}
+            >
+              {COMMON_TIMEZONES.map((z) => (
+                <option key={z} value={z}>
+                  {z === "auto" ? `Auto (${browserTimeZone()})` : z}
+                </option>
+              ))}
+            </select>
+            <div className="help">
+              All timestamps, daily traces and hour ticks render in this zone.
+              Reload after changing if a chart was already on screen.
             </div>
           </div>
         </div>

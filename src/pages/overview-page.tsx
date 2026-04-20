@@ -13,11 +13,12 @@ import { MetricTile } from "@/components/dashboard/metric-tile"
 import { adaptDailySummaries, adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import { GMI_TARGET_ADULT_T1D, ea1cFromMgDl, gmiFromMgDl } from "@/lib/gmi"
+import { todayInTz } from "@/lib/time"
 import { Icons } from "@/lib/design-icons"
 import type { DailyResponse, DailySummary, OverviewResponse, TrendsResponse } from "@/types"
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return todayInTz()
 }
 
 export function OverviewPage({ token }: { token: string }) {

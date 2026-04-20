@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts"
 
+import { formatLocalHHMM, minutesInLocalDay, userTimeZone } from "@/lib/time"
 import type { EventPoint, GlucosePoint } from "@/types"
 
 /* ───────────── props ───────────── */
@@ -61,15 +62,14 @@ function classify(v: number): State {
   return "vhigh"
 }
 
-function minuteOfDay(at: number, rangeStart: number): number {
-  return Math.max(0, Math.min(DAY_MAX, Math.round((at - rangeStart) / 60000)))
+/** Returns minutes past local midnight for the point's absolute time. */
+function minuteOfLocalDay(at: number, tz: string): number {
+  if (!Number.isFinite(at)) return 0
+  return Math.max(0, Math.min(DAY_MAX, Math.round(minutesInLocalDay(at, tz))))
 }
 
 function formatHHMM(minutes: number): string {
-  const clamped = Math.max(0, Math.min(DAY_MAX, Math.round(minutes)))
-  const h = Math.floor(clamped / 60) % 24
-  const m = clamped % 60
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+  return formatLocalHHMM(minutes)
 }
 
 function generateTicks(stepMin: number): number[] {
@@ -129,7 +129,7 @@ function iobSeries(events: { t: number; u: number }[], stepMin = 5) {
 
 /* ───────────── component ───────────── */
 export function DailyTrace({
-  rangeStart,
+  rangeStart: _rangeStart,
   glucose,
   carbs = [],
   boluses = [],
@@ -143,29 +143,30 @@ export function DailyTrace({
   defaultWindow = "24h",
 }: DailyTraceProps) {
   const [win, setWin] = useState<Window>(defaultWindow)
+  const tz = userTimeZone()
 
   const data = useMemo(() => {
     const glu = glucose
-      .map((g) => ({ t: minuteOfDay(g.at, rangeStart), v: Math.round(g.value), state: classify(g.value) }))
+      .map((g) => ({ t: minuteOfLocalDay(g.at, tz), v: Math.round(g.value), state: classify(g.value) }))
       .sort((a, b) => a.t - b.t)
 
     const bol = boluses.map((b) => ({
-      t: minuteOfDay(b.at, rangeStart),
+      t: minuteOfLocalDay(b.at, tz),
       u: roundTo(b.value, 2),
     }))
     const smb = smbs.map((b) => ({
-      t: minuteOfDay(b.at, rangeStart),
+      t: minuteOfLocalDay(b.at, tz),
       u: roundTo(b.value, 2),
     }))
     const carb = carbs.map((c) => ({
-      t: minuteOfDay(c.at, rangeStart),
+      t: minuteOfLocalDay(c.at, tz),
       g: Math.round(c.value),
     }))
-    const smbgRows = smbgs.map((s) => ({ t: minuteOfDay(s.at, rangeStart), v: Math.round(s.value) }))
+    const smbgRows = smbgs.map((s) => ({ t: minuteOfLocalDay(s.at, tz), v: Math.round(s.value) }))
     const iob = iobSeries([...bol, ...smb])
 
     return { glu, bol, smb, carb, smbgRows, iob }
-  }, [rangeStart, glucose, carbs, boluses, smbs, smbgs])
+  }, [glucose, carbs, boluses, smbs, smbgs, tz])
 
   const domain = useMemo<[number, number]>(() => {
     const lengths: Record<Window, number> = { "4h": 240, "6h": 360, "12h": 720, "24h": DAY_MAX }
@@ -275,7 +276,7 @@ export function DailyTrace({
 
           {/* Temp basal overlays — faint bands only, no extra strip */}
           {tempBasals.map((t, i) => {
-            const x1 = minuteOfDay(t.at, rangeStart)
+            const x1 = minuteOfLocalDay(t.at, tz)
             const x2 = Math.min(DAY_MAX, x1 + (t.duration || 30))
             const isSuspend = t.value === 0
             return (

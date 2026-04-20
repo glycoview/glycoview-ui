@@ -7,6 +7,7 @@ import { PanelHead, Stat } from "@/components/dashboard/primitives"
 import { adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import { ea1cFromMgDl, gmiFromMgDl } from "@/lib/gmi"
+import { formatDateISO, userTimeZone } from "@/lib/time"
 import type { TrendsResponse } from "@/types"
 
 export function TrendsPage({ token }: { token: string }) {
@@ -247,7 +248,7 @@ export function TrendsPage({ token }: { token: string }) {
                       <tr key={d.date} className="clickable">
                         <td>
                           <div className="mono">
-                            {new Date(d.date).toISOString().slice(0, 10)}
+                            {formatDateISO(d.date, userTimeZone())}
                           </div>
                           <div className="hint">{d.day}</div>
                         </td>

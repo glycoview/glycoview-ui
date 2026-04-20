@@ -7,6 +7,7 @@ import { PanelHead, Stat } from "@/components/dashboard/primitives"
 import { adaptTIR, eventLabel } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import { Icons } from "@/lib/design-icons"
+import { formatTimeOfDay, todayInTz, userTimeZone } from "@/lib/time"
 import type { DailyResponse } from "@/types"
 
 function addDays(iso: string, delta: number): string {
@@ -15,12 +16,9 @@ function addDays(iso: string, delta: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 export function DailyPage({ token }: { token: string }) {
-  const [date, setDate] = useState(() => todayIso())
+  const tz = userTimeZone()
+  const [date, setDate] = useState(() => todayInTz(tz))
   const { data, loading, error } = useApiResource<DailyResponse>(
     `/app/api/daily?date=${date}`,
     token,
@@ -60,7 +58,7 @@ export function DailyPage({ token }: { token: string }) {
                   className="pill-btn"
                   style={{ height: 26, padding: "0 8px" }}
                   onClick={() => setDate(addDays(date, 1))}
-                  disabled={date >= todayIso()}
+                  disabled={date >= todayInTz(tz)}
                   title="Next day"
                 >
                   <Icons.ChevronR size={12} />
@@ -239,7 +237,7 @@ export function DailyPage({ token }: { token: string }) {
                     alignItems: "center",
                   }}
                 >
-                  <div className="mono hint">{hhmmLocal(m.at, data.rangeStart)}</div>
+                  <div className="mono hint">{formatTimeOfDay(m.at, tz)}</div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{eventLabel(m)}</div>
                     <div className="hint">{m.kind}</div>
@@ -277,7 +275,7 @@ export function DailyPage({ token }: { token: string }) {
                     alignItems: "center",
                   }}
                 >
-                  <div className="mono hint">{hhmmLocal(e.at, data.rangeStart)}</div>
+                  <div className="mono hint">{formatTimeOfDay(e.at, tz)}</div>
                   <div>
                     <div style={{ fontSize: 13 }}>{eventLabel(e)}</div>
                     <div className="hint">{e.kind}</div>
@@ -336,14 +334,6 @@ function MiniStat({
   )
 }
 
-function hhmmLocal(at: number, dayStart: number): string {
-  if (!at) return "--:--"
-  const ms = at - dayStart
-  const totalMin = Math.max(0, Math.round(ms / 60000))
-  const h = Math.floor(totalMin / 60) % 24
-  const m = totalMin % 60
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
-}
 
 function LoadingBanner({ label }: { label: string }) {
   return (

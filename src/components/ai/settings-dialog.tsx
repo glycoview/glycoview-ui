@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 export type AiSettings = {
   baseUrl: string
@@ -10,6 +10,20 @@ type Props = {
   open: boolean
   onClose: () => void
   onSaved?: () => void
+}
+
+type Mode = "cloud" | "local" | "custom"
+
+const CLOUD_BASE = "https://ollama.com/v1"
+const LOCAL_BASE_SUGGESTIONS = ["http://host.docker.internal:11434/v1", "http://localhost:11434/v1"]
+
+function detectMode(baseUrl: string): Mode {
+  const url = baseUrl.trim().toLowerCase()
+  if (url === CLOUD_BASE.toLowerCase()) return "cloud"
+  if (/localhost|127\.|host\.docker\.internal|\.local(:|$|\/)|^http:\/\/192\.168\.|^http:\/\/10\.|^http:\/\/172\.1[6-9]\.|^http:\/\/172\.2[0-9]\.|^http:\/\/172\.3[0-1]\./.test(url)) {
+    return "local"
+  }
+  return "custom"
 }
 
 /**
@@ -71,6 +85,20 @@ export function AiSettingsDialog({ open, onClose, onSaved }: Props) {
     }
   }
 
+  const mode = useMemo<Mode>(() => (settings ? detectMode(settings.baseUrl) : "cloud"), [settings])
+
+  const setMode = (m: Mode) => {
+    if (!settings) return
+    if (m === "cloud") {
+      setSettings({ ...settings, baseUrl: CLOUD_BASE })
+    } else if (m === "local") {
+      if (detectMode(settings.baseUrl) !== "local") {
+        setSettings({ ...settings, baseUrl: LOCAL_BASE_SUGGESTIONS[0] })
+      }
+    }
+    // "custom" — leave the URL alone so the user can type freely.
+  }
+
   if (!open) return null
 
   return (
@@ -96,7 +124,42 @@ export function AiSettingsDialog({ open, onClose, onSaved }: Props) {
           ) : (
             <>
               <div>
-                <div className="label">API key</div>
+                <div className="label">Where does the model run?</div>
+                <div className="seg" style={{ gridAutoColumns: "1fr 1fr 1fr" }}>
+                  <button
+                    type="button"
+                    className={mode === "cloud" ? "is-active" : ""}
+                    onClick={() => setMode("cloud")}
+                  >
+                    Ollama Cloud
+                  </button>
+                  <button
+                    type="button"
+                    className={mode === "local" ? "is-active" : ""}
+                    onClick={() => setMode("local")}
+                  >
+                    Local Ollama
+                  </button>
+                  <button
+                    type="button"
+                    className={mode === "custom" ? "is-active" : ""}
+                    onClick={() => setMode("custom")}
+                  >
+                    Custom
+                  </button>
+                </div>
+                <div className="help">
+                  {mode === "cloud"
+                    ? "Uses ollama.com with your API key. Works from anywhere."
+                    : mode === "local"
+                      ? "Points at a local Ollama server (no API key required). From Docker, use host.docker.internal instead of localhost."
+                      : "Any OpenAI-compatible /v1/chat/completions endpoint."}
+                </div>
+              </div>
+              <div>
+                <div className="label">
+                  API key{mode === "local" ? " (optional for local servers)" : ""}
+                </div>
                 <input
                   className="input mono"
                   type={showKey ? "text" : "password"}
@@ -105,12 +168,14 @@ export function AiSettingsDialog({ open, onClose, onSaved }: Props) {
                     setKeyDirty(true)
                     setSettings({ ...settings, apiKey: e.target.value })
                   }}
-                  placeholder="olla_••••••••"
+                  placeholder={mode === "local" ? "leave blank" : "olla_••••••••"}
                   autoComplete="off"
                 />
                 <div className="row between mt-4">
                   <span className="help">
-                    Keep the masked value to leave the saved key unchanged.
+                    {mode === "local"
+                      ? "Local Ollama ignores this field. Leave blank unless you've set OLLAMA_API_KEY on the server."
+                      : "Keep the masked value to leave the saved key unchanged."}
                   </span>
                   <button
                     type="button"
@@ -128,11 +193,15 @@ export function AiSettingsDialog({ open, onClose, onSaved }: Props) {
                   className="input mono"
                   value={settings.model}
                   onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                  placeholder="gpt-oss:120b"
+                  placeholder={mode === "local" ? "llama3.1:8b-instruct" : "gpt-oss:120b"}
                 />
                 <div className="help">
-                  Tool-capable Ollama Cloud models only (e.g. gpt-oss:120b,
-                  gpt-oss:20b, qwen3-coder:*).
+                  Must be a tool-capable model.{" "}
+                  {mode === "cloud"
+                    ? "Cloud: gpt-oss:120b (flagship), gpt-oss:20b (faster)."
+                    : mode === "local"
+                      ? "Local: any tool-capable model you've pulled (llama3.1:8b-instruct, qwen2.5:7b-instruct, etc.)."
+                      : "Anything your endpoint supports with OpenAI-style tools."}
                 </div>
               </div>
               <div>
@@ -144,7 +213,7 @@ export function AiSettingsDialog({ open, onClose, onSaved }: Props) {
                   placeholder="https://ollama.com/v1"
                 />
                 <div className="help">
-                  OpenAI-compatible endpoint. Usually leave as default.
+                  OpenAI-compatible endpoint. Must end with <span className="mono">/v1</span>.
                 </div>
               </div>
               {keyDirty && !settings.apiKey.includes("•") ? (
