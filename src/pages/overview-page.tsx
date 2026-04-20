@@ -4,9 +4,9 @@ import { DailyTrace } from "@/components/charts/daily-trace"
 import { DayStrip } from "@/components/charts/day-strip"
 import { MiniDailyBars } from "@/components/charts/mini-daily-bars"
 import { MiniDailyLine } from "@/components/charts/mini-daily-line"
+import { TIRBar } from "@/components/charts/tir-bar"
 import { TIRStack } from "@/components/charts/tir-stack"
 import {
-  KPI,
   PanelHead,
 } from "@/components/dashboard/primitives"
 import { MetricTile } from "@/components/dashboard/metric-tile"
@@ -96,30 +96,59 @@ export function OverviewPage({ token }: { token: string }) {
         </div>
 
         <div className="panel">
-          <div
-            style={{
-              padding: 16,
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 14,
-            }}
-          >
-            <KPI
-              label="Time in range"
-              value={tir ? Math.round(tir.percent).toString() : "–"}
-              unit="%"
-              sub={`70–180 mg/dL · tight ${Math.round(tirDelta)}%`}
-              good
-            />
-            {data.metrics.slice(0, 2).map((m) => (
-              <KPI
-                key={m.id ?? m.label}
-                label={m.label}
-                value={numericPart(m.value) || m.value}
-                unit={unitPart(m.value)}
-                sub={m.detail}
+          <div style={{ padding: 18, display: "grid", gap: 16 }}>
+            <div>
+              <div className="row between" style={{ alignItems: "baseline" }}>
+                <div className="kicker">Time in range · today</div>
+                <div className="row" style={{ gap: 8, alignItems: "baseline" }}>
+                  <div className="mono num-xl" style={{ fontSize: 22, color: "var(--st-in)" }}>
+                    {tir ? Math.round(tir.percent).toString() : "—"}
+                    <span style={{ fontSize: 12, color: "var(--ink-4)" }}>%</span>
+                  </div>
+                  <div className="hint mono" style={{ fontSize: 11 }}>
+                    tight {Math.round(tirDelta)}%
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <TIRBar bands={data.timeInRange} compact />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 12,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+              }}
+            >
+              {data.metrics.slice(0, 3).map((m) => (
+                <StatCell key={m.id ?? m.label} m={m} />
+              ))}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+              }}
+            >
+              <MiniFact
+                label="Devices"
+                primary={data.devices.length.toString()}
+                secondary={data.devices.filter((d) => d.status).length.toString() + " live"}
               />
-            ))}
+              <MiniFact
+                label="Activity · 24h"
+                primary={data.activity.length.toString()}
+                secondary={data.activity[0] ? data.activity[0].kind : "quiet"}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -412,6 +441,47 @@ function formatRelative(ms: number): string {
   const hours = Math.round(mins / 60)
   if (hours < 48) return `${hours}h`
   return `${Math.round(hours / 24)}d`
+}
+
+function StatCell({ m }: { m: { id?: string; label: string; value: string; detail?: string; accent?: string } }) {
+  return (
+    <div>
+      <div className="kicker" style={{ fontSize: 10 }}>
+        {m.label}
+      </div>
+      <div className="row" style={{ alignItems: "baseline", gap: 4, marginTop: 4 }}>
+        <div className="mono num-xl" style={{ fontSize: 18, color: accentColor(m.accent) ?? "var(--ink)" }}>
+          {numericPart(m.value) || m.value}
+        </div>
+        <span className="mono hint" style={{ fontSize: 10 }}>
+          {unitPart(m.value)}
+        </span>
+      </div>
+      {m.detail ? (
+        <div className="hint" style={{ fontSize: 10.5, marginTop: 2 }}>
+          {m.detail}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function MiniFact({ label, primary, secondary }: { label: string; primary: string; secondary?: string }) {
+  return (
+    <div>
+      <div className="kicker" style={{ fontSize: 10 }}>
+        {label}
+      </div>
+      <div className="mono" style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>
+        {primary}
+      </div>
+      {secondary ? (
+        <div className="hint mono" style={{ fontSize: 10.5 }}>
+          {secondary}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /* ───── 4-tile metric strip ───── */

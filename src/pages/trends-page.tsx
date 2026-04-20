@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react"
 
 import { AGPChart } from "@/components/charts/agp-chart"
+import { TIRBar } from "@/components/charts/tir-bar"
 import { TIRStack } from "@/components/charts/tir-stack"
-import { KPI, PanelHead, Stat } from "@/components/dashboard/primitives"
+import { PanelHead, Stat } from "@/components/dashboard/primitives"
 import { adaptTIR } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import type { TrendsResponse } from "@/types"
@@ -79,22 +80,63 @@ export function TrendsPage({ token }: { token: string }) {
         </div>
 
         <div className="panel">
-          <div
-            style={{
-              padding: 16,
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 14,
-            }}
-          >
-            <KPI
-              label="Time in range"
-              value={tir ? Math.round(tir.percent).toString() : "–"}
-              unit="%"
-              good
-            />
-            <KPI label="Avg glucose" value={numericPart(avg) || avg} unit={unitPart(avg)} />
-            <KPI label="Variability" value={numericPart(cv) || cv} unit={unitPart(cv)} />
+          <div style={{ padding: 18, display: "grid", gap: 16 }}>
+            <div>
+              <div className="row between" style={{ alignItems: "baseline" }}>
+                <div className="kicker">Time in range · {days}d</div>
+                <div className="mono num-xl" style={{ fontSize: 22, color: "var(--st-in)" }}>
+                  {tir ? Math.round(tir.percent).toString() : "—"}
+                  <span style={{ fontSize: 12, color: "var(--ink-4)" }}>%</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <TIRBar bands={data.timeInRange} compact />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 12,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+              }}
+            >
+              <KpiCell label="Avg glucose" value={numericPart(avg) || avg} unit={unitPart(avg)} />
+              <KpiCell label="Variability" value={numericPart(cv) || cv} unit={unitPart(cv)} />
+              <KpiCell label="Sensor wear" value={numericPart(sensor) || sensor} unit={unitPart(sensor)} />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 12,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+              }}
+            >
+              <KpiCell label="Days" value={data.daysSummary.length.toString()} unit="" />
+              <KpiCell
+                label="Best day"
+                value={
+                  data.daysSummary.length > 0
+                    ? Math.round(Math.max(...data.daysSummary.map((d) => d.tir))).toString()
+                    : "—"
+                }
+                unit="% TIR"
+              />
+              <KpiCell
+                label="Worst day"
+                value={
+                  data.daysSummary.length > 0
+                    ? Math.round(Math.min(...data.daysSummary.map((d) => d.tir))).toString()
+                    : "—"
+                }
+                unit="% TIR"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -239,6 +281,26 @@ function numericPart(value: string): string {
 function unitPart(value: string): string {
   const match = value.match(/-?\d+(\.\d+)?\s*(.*)/)
   return match ? match[2].trim() : ""
+}
+
+function KpiCell({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <div>
+      <div className="kicker" style={{ fontSize: 10 }}>
+        {label}
+      </div>
+      <div className="row" style={{ alignItems: "baseline", gap: 4, marginTop: 4 }}>
+        <div className="mono num-xl" style={{ fontSize: 18 }}>
+          {value}
+        </div>
+        {unit ? (
+          <span className="mono hint" style={{ fontSize: 10 }}>
+            {unit}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function LoadingBanner({ label }: { label: string }) {

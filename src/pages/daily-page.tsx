@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react"
 
 import { DailyTrace } from "@/components/charts/daily-trace"
+import { TIRBar } from "@/components/charts/tir-bar"
 import { TIRStack } from "@/components/charts/tir-stack"
-import { KPI, PanelHead, Stat } from "@/components/dashboard/primitives"
+import { PanelHead, Stat } from "@/components/dashboard/primitives"
 import { adaptTIR, eventLabel } from "@/lib/backend-adapters"
 import { useApiResource } from "@/lib/api"
 import { Icons } from "@/lib/design-icons"
@@ -87,25 +88,74 @@ export function DailyPage({ token }: { token: string }) {
         </div>
 
         <div className="panel">
-          <div
-            style={{
-              padding: 16,
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 14,
-            }}
-          >
-            <KPI label="Carbs" value={numericPart(carbsMetric)} unit={unitPart(carbsMetric)} />
-            <KPI
-              label="Insulin"
-              value={numericPart(insulinMetric)}
-              unit={unitPart(insulinMetric)}
-            />
-            <KPI
-              label="Events"
-              value={data.metrics.find((m) => m.id === "events")?.value ?? "0"}
-              sub={`${data.carbs.length + (data.boluses?.length ?? data.insulin.length)} logged`}
-            />
+          <div style={{ padding: 18, display: "grid", gap: 16 }}>
+            <div>
+              <div className="row between" style={{ alignItems: "baseline" }}>
+                <div className="kicker">Time in range · this day</div>
+                <div className="mono num-xl" style={{ fontSize: 20, color: "var(--st-in)" }}>
+                  {tir ? Math.round(tir.percent).toString() : "—"}
+                  <span style={{ fontSize: 11, color: "var(--ink-4)" }}>%</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <TIRBar bands={data.timeInRange} compact />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, 1fr)",
+                gap: 12,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+              }}
+            >
+              <MiniStat
+                label="Carbs"
+                value={numericPart(carbsMetric) || "—"}
+                unit={unitPart(carbsMetric)}
+                color="var(--carbs)"
+              />
+              <MiniStat
+                label="Insulin"
+                value={numericPart(insulinMetric) || "—"}
+                unit={unitPart(insulinMetric)}
+                color="var(--bolus)"
+              />
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, 1fr)",
+                gap: 8,
+                paddingTop: 14,
+                borderTop: "1px solid var(--line-2)",
+              }}
+            >
+              <MiniStat
+                label="Bolus"
+                value={(data.boluses?.length ?? 0).toString()}
+                unit="evts"
+              />
+              <MiniStat
+                label="SMB"
+                value={(data.smbs?.length ?? 0).toString()}
+                unit="evts"
+                color="var(--smb)"
+              />
+              <MiniStat
+                label="Meals"
+                value={data.carbs.length.toString()}
+                unit="evts"
+              />
+              <MiniStat
+                label="Temp"
+                value={(data.tempBasals?.length ?? 0).toString()}
+                unit="evts"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -254,6 +304,36 @@ function numericPart(value: string): string {
 function unitPart(value: string): string {
   const match = value.match(/-?\d+(\.\d+)?\s*(.*)/)
   return match ? match[2].trim() : ""
+}
+
+function MiniStat({
+  label,
+  value,
+  unit,
+  color,
+}: {
+  label: string
+  value: string
+  unit?: string
+  color?: string
+}) {
+  return (
+    <div>
+      <div className="kicker" style={{ fontSize: 10 }}>
+        {label}
+      </div>
+      <div className="row" style={{ alignItems: "baseline", gap: 4, marginTop: 4 }}>
+        <div className="mono num-xl" style={{ fontSize: 17, color: color ?? "var(--ink)" }}>
+          {value}
+        </div>
+        {unit ? (
+          <span className="mono hint" style={{ fontSize: 10 }}>
+            {unit}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function hhmmLocal(at: number, dayStart: number): string {
